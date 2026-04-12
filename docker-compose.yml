@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: vet_user
+      POSTGRES_PASSWORD: vet_password
+      POSTGRES_DB: vet_clinic_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    environment:
+      # Notice how we use the service name "db" instead of "localhost" here!
+      - DATABASE_URL=postgresql://vet_user:vet_password@db:5432/vet_clinic_db
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app  # Enables hot-reloading for Python
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app # Enables hot-reloading for Next.js
+      - /app/node_modules
+
+volumes:
+  pgdata:
