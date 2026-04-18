@@ -16,9 +16,13 @@ CREATE TABLE Appointment (
     vaccinationPlanID INT,
     veterinarianID INT NOT NULL,
     petOwnerID INT NOT NULL,
+    
     FOREIGN KEY (vaccinationPlanID) REFERENCES VaccinationPlan(planID) ON DELETE SET NULL,
     FOREIGN KEY (veterinarianID) REFERENCES Veterinarian(veterinarianID) ON DELETE CASCADE,
-    FOREIGN KEY (petOwnerID) REFERENCES PetOwner(ownerID) ON DELETE CASCADE
+    FOREIGN KEY (petOwnerID) REFERENCES PetOwner(ownerID) ON DELETE CASCADE,
+    
+    -- Here is the implemented constraint:
+    CONSTRAINT uq_vet_datetime UNIQUE (veterinarianID, dateTime)
 );
 
 
