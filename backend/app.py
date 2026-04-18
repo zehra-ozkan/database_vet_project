@@ -15,7 +15,7 @@ def get_db_connection():
     conn = psycopg2.connect(DB_URL)
     return conn
 
-@app.route('/api/status', methods=['GET'])
+@app.route('/api/test', methods=['GET'])
 def status():
     """A simple route to check if the Flask backend is awake."""
     return jsonify({"message": "Backend is running!"})
