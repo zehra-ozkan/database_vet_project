@@ -2,6 +2,9 @@ import os
 import psycopg2
 from flask import Flask, jsonify
 from flask_cors import CORS
+from vet.vet_dashboard_api import vet_dashboard_bp
+from vet.vet_appointments_api import vet_appointments_bp
+from vet.vet_timeline_api import vet_timeline_bp
 
 app = Flask(__name__)
 # Enable CORS so the Next.js frontend can communicate with Flask
@@ -72,6 +75,11 @@ def db_check():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Register veterinarian-specific API routes from separate module files.
+app.register_blueprint(vet_dashboard_bp)
+app.register_blueprint(vet_appointments_bp)
+app.register_blueprint(vet_timeline_bp)
 
 if __name__ == '__main__':
     # Binding to 0.0.0.0 is required for Docker routing to work
