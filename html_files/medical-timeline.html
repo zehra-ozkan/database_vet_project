@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Medical Timeline - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="vet-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="vet-dashboard.html">Dashboard</a>
+          <a href="vet-appointments.html">Appointments</a>
+          <a href="medical-timeline.html" class="active">Timeline</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">DK</summary>
+            <div class="profile-menu">
+              <a href="vet-dashboard.html#profile">My Profile</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Medical Timeline</h1>
+      <p class="page-subtitle">Complete history: diagnoses, prescriptions, vaccinations, referrals</p>
+
+      <div class="form-group" style="max-width: 280px;">
+        <label>Pet</label>
+        <select><option>Buddy</option><option>Luna</option></select>
+      </div>
+
+      <div class="card" style="background: rgba(2,6,23,.02); margin: 16px 0 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <h2 style="font-size: 16px; margin: 0 0 6px;">Vaccination plan</h2>
+            <p class="muted" style="margin: 0; font-size: 13px;">Active schedule based on species, breed, and age</p>
+          </div>
+          <a href="open-appointment.html" class="btn ghost">Update plan</a>
+        </div>
+        <div class="panels" style="margin-top: 12px; grid-template-columns: 1fr 1fr;">
+          <div class="tile">
+            <div style="font-weight: 700;">Rabies</div>
+            <p class="muted" style="margin: 4px 0 8px; font-size: 13px;">Interval: 12 months · Next due: Mar 18, 2025</p>
+            <span class="pill ok">On schedule</span>
+          </div>
+          <div class="tile">
+            <div style="font-weight: 700;">Distemper</div>
+            <p class="muted" style="margin: 4px 0 8px; font-size: 13px;">Interval: 36 months · Next due: Jul 18, 2026</p>
+            <span class="pill ok">On schedule</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <div class="tile">
+          <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <span class="pill info">Visit</span>
+              <span class="muted" style="font-size: 13px; margin-left: 8px;">Mar 10, 2024</span>
+            </div>
+            <div style="font-weight: 700;">Dr. Kim · Downtown</div>
+          </div>
+          <h3 style="margin: 12px 0 6px; font-size: 15px;">Allergy flare-up</h3>
+          <p class="muted" style="margin: 0; font-size: 13px;">Symptoms: itching, sneezing. Treatment: antihistamine prescribed. Follow-up recommended in 2 weeks.</p>
+          <p class="muted" style="margin: 8px 0 0; font-size: 13px;">Prescription: Antihistamine 10mg, 2x daily for 7 days</p>
+        </div>
+        <div class="tile">
+          <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <span class="pill ok">Vaccination</span>
+              <span class="muted" style="font-size: 13px; margin-left: 8px;">Jan 18, 2024</span>
+            </div>
+            <div style="font-weight: 700;">Dr. Kim · Downtown</div>
+          </div>
+          <h3 style="margin: 12px 0 6px; font-size: 15px;">Distemper vaccine</h3>
+          <p class="muted" style="margin: 0; font-size: 13px;">Batch: DST-2024-001. Next due: Jul 18, 2024</p>
+        </div>
+        <div class="tile">
+          <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <span class="pill info">Visit</span>
+              <span class="muted" style="font-size: 13px; margin-left: 8px;">Feb 04, 2024</span>
+            </div>
+            <div style="font-weight: 700;">Dr. Patel · Northside</div>
+          </div>
+          <h3 style="margin: 12px 0 6px; font-size: 15px;">Dental check</h3>
+          <p class="muted" style="margin: 0; font-size: 13px;">Routine cleaning. Notes: teeth in good condition. Dental care supplement recommended.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Appointments & Billing - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    .app-bill-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 900px) { .app-bill-layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html" class="active">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Appointments & Billing</h1>
+    <p class="page-subtitle">Manage appointments and invoices. Bills are generated after completed visits (consultation + treatment + medication).</p>
+
+    <div class="kpi-row mb-2">
+      <div class="kpi">
+        <div class="label">Upcoming</div>
+        <div class="value">2</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Outstanding</div>
+        <div class="value">$120</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Paid this month</div>
+        <div class="value">$85</div>
+      </div>
+    </div>
+
+    <div class="app-bill-layout mt-2">
+      <div class="card">
+        <h2 style="font-size: 16px; margin: 0 0 12px; font-weight: 700;">Appointments</h2>
+        <div class="form-group" style="max-width: 200px;"><label>Filter</label><select><option>All</option><option>Upcoming</option><option>Past</option></select></div>
+        <div class="table-wrap mt-1">
+          <table>
+            <thead><tr><th>Date</th><th>Time</th><th>Pet</th><th>Vet</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Mar 20</td><td>10:30</td><td>Buddy</td><td>Dr. Kim</td>
+                <td><span class="pill ok">Confirmed</span></td>
+                <td><a href="#">Cancel</a></td>
+              </tr>
+              <tr>
+                <td>Mar 28</td><td>15:00</td><td>Buddy</td><td>Dr. Patel</td>
+                <td><span class="pill wait">Pending</span></td>
+                <td><a href="#">Cancel</a></td>
+              </tr>
+              <tr>
+                <td>Mar 10</td><td>14:00</td><td>Buddy</td><td>Dr. Kim</td>
+                <td><span class="pill ok">Completed</span></td>
+                <td><a href="visit-summary.html">Summary</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="font-size: 16px; margin: 0 0 12px; font-weight: 700;">Invoices</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Invoice</th><th>Date</th><th>Pet</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td>#INV-012</td><td>Mar 10</td><td>Buddy</td><td>$120</td>
+                <td><span class="pill danger">Unpaid</span></td>
+                <td><button class="btn">Pay</button></td>
+              </tr>
+              <tr>
+                <td>#INV-008</td><td>Feb 04</td><td>Buddy</td><td>$85</td>
+                <td><span class="pill ok">Paid</span></td>
+                <td><a href="#">View</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

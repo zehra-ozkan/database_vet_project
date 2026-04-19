@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visit Summary & Rating - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Visit Summary</h1>
+      <p class="page-subtitle">Mar 10, 2024 · Buddy · Dr. Kim · Downtown Clinic</p>
+
+      <div class="card" style="background: rgba(255,255,255,.72); margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Diagnosis & treatment</h2>
+        <p class="muted" style="margin: 0; line-height: 1.6;">Allergy flare-up. Symptoms: itching, sneezing. Prescribed antihistamine 10mg, 2x daily for 7 days. Follow-up in 2 weeks if symptoms persist.</p>
+      </div>
+
+      <div class="card" style="background: rgba(255,255,255,.72); margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Prescriptions</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Medication</th><th>Dosage</th><th>Duration</th></tr></thead>
+            <tbody><tr><td>Antihistamine</td><td>10mg 2x daily</td><td>7 days</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="background: rgba(255,255,255,.72); margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Rate Dr. Kim</h2>
+        <p class="muted" style="margin: 0 0 12px;">Your feedback helps other pet owners and improves our service.</p>
+        <form>
+          <div class="form-group">
+            <label>Rating (1–5)</label>
+            <select><option>5 - Excellent</option><option>4</option><option>3</option><option>2</option><option>1 - Poor</option></select>
+          </div>
+         
+          <button type="submit" class="btn">Submit rating</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="owner-dashboard">
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html" class="active">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="card">
+        <h1>Welcome back, Alex</h1>
+        <p class="sub">Track your pet health across branches: appointments, prescriptions, vaccinations, bills, and microchip/lost-found records.</p>
+        <div class="chip mt-2">
+          <div class="microchip"></div>
+          <div>
+            <div style="font-weight: 800;">Microchip Status</div>
+            <p class="muted" style="margin: 4px 0 0; font-size: 13px;">Chip ID: <strong>FC-9281-XX</strong> · Owner verified</p>
+            <p class="muted" style="margin: 6px 0 0; font-size: 13px;">Last visit: Mar 10 · Next due: Rabies in 10 days</p>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="label">Upcoming</div>
+            <div class="value">2</div>
+            <p class="muted" style="font-size: 13px; margin: 6px 0 0;">Next appointment tomorrow</p>
+          </div>
+          <div class="kpi">
+            <div class="label">Outstanding</div>
+            <div class="value">$120</div>
+            <p class="muted" style="font-size: 13px; margin: 6px 0 0;">Pay to book</p>
+          </div>
+        </div>
+        <div class="form-group mt-2">
+          <a href="appointments.html" class="btn block">Pay Invoice</a>
+        </div>
+        <div class="tile mt-2">
+          <div style="font-weight: 700; font-size: 13px;">Quick Reminders</div>
+          <p class="muted" style="margin: 6px 0 10px; font-size: 13px;">Unpaid bill detected and Rabies vaccination due soon.</p>
+          <span class="pill info">Billing</span>
+          <span class="pill wait">Vaccination</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panels">
+      <div class="card panel">
+        <h2>Book an Appointment</h2>
+        <p class="hint">Choose branch and veterinarian</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Branch</label>
+            <select><option>Select branch</option><option>Downtown Clinic</option><option>Northside Clinic</option></select>
+          </div>
+          <div class="form-group">
+            <label>Veterinarian</label>
+            <select><option>Select vet</option><option>Dr. Kim</option><option>Dr. Patel</option></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" />
+        </div>
+        <a href="book-appointment.html" class="btn block">Find Time Slots</a>
+      </div>
+      <div class="card panel">
+        <h2>Upcoming Visits</h2>
+        <p class="hint">Next scheduled appointments</p>
+        <div class="tile">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div>
+              <div style="font-weight: 700;">Mar 20 · 10:30</div>
+              <p class="muted" style="margin: 4px 0 0; font-size: 13px;">Buddy · Northside Clinic</p>
+            </div>
+            <span class="pill wait">Scheduled</span>
+          </div>
+        </div>
+        <div class="tile">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div>
+              <div style="font-weight: 700;">Apr 02 · 09:00</div>
+              <p class="muted" style="margin: 4px 0 0; font-size: 13px;">Luna · Downtown Clinic</p>
+            </div>
+            <span class="pill ok">Confirmed</span>
+          </div>
+        </div>
+        <a href="appointments.html" class="btn ghost block">Manage appointments</a>
+      </div>
+      <div class="card panel" style="grid-column: 1 / -1;">
+        <h2>Vaccination Tracker</h2>
+        <p class="hint">Due soon alerts</p>
+        <div class="panels" style="margin-top: 12px; grid-template-columns: 1fr 1fr;">
+          <div class="tile">
+            <div style="font-weight: 700;">Rabies</div>
+            <p class="muted" style="margin: 4px 0 8px; font-size: 13px;">Due in 10 days</p>
+            <span class="pill wait">Due</span>
+          </div>
+          <div class="tile">
+            <div style="font-weight: 700;">Distemper</div>
+            <p class="muted" style="margin: 4px 0 8px; font-size: 13px;">Next due in 6 months</p>
+            <span class="pill ok">Up to date</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Recent Activity</h2>
+      <p class="page-subtitle">Appointments and notes</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Type</th><th>Branch</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mar 10</td><td>Medical Visit</td><td>Downtown</td>
+              <td><span class="pill ok">Completed</span></td>
+              <td><a href="visit-summary.html">View</a></td>
+            </tr>
+            <tr>
+              <td>Mar 20</td><td>Appointment</td><td>Northside</td>
+              <td><span class="pill wait">Scheduled</span></td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pet Owner Dashboard - Aurora</title>
+  <style>
+    :root{
+      --bg:#f6f8ff;
+      --text:#0f172a;
+      --muted:rgba(15,23,42,.68);
+      --line:rgba(15,23,42,.12);
+      --panel:rgba(255,255,255,.76);
+      --radius:18px;
+      --primary:#6d28d9; /* violet */
+      --success:#059669;
+      --warning:#d97706;
+      --danger:#e11d48;
+      --shadow: 0 16px 45px rgba(15,23,42,.10);
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--font); color:var(--text);
+      background:
+        radial-gradient(1000px 540px at 15% 0%, rgba(109,40,217,.18), transparent),
+        radial-gradient(760px 460px at 95% 10%, rgba(34,197,94,.14), transparent),
+        radial-gradient(680px 420px at 70% 95%, rgba(249,115,22,.10), transparent),
+        var(--bg);
+    }
+    .container{max-width:1100px; margin:0 auto; padding:18px}
+
+    .brand{
+      display:flex; align-items:center; gap:12px;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+    }
+    .brand .mark{
+      width:38px; height:38px; border-radius:16px;
+      background:linear-gradient(135deg, rgba(167,139,250,.95), rgba(34,197,94,.55));
+      box-shadow:0 12px 30px rgba(167,139,250,.16);
+    }
+    .brand strong{display:block; font-size:15px; letter-spacing:.2px}
+    .brand span{display:block; font-size:12px; color:var(--muted); margin-top:2px}
+
+    header{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:10px 0 18px;
+    }
+    .header-right{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .nav.nav-right{justify-content:flex-end}
+    .nav{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    }
+    .nav a{
+      padding:10px 12px; border-radius:14px; border:1px solid var(--line);
+      background:rgba(255,255,255,.70); color:var(--text); font-size:14px;
+    }
+    .nav a.active{border-color:rgba(109,40,217,.30); background:rgba(109,40,217,.10)}
+    .btn{
+      padding:10px 14px; border-radius:14px; border:1px solid rgba(109,40,217,.35);
+      background: linear-gradient(135deg, rgba(109,40,217,.14), rgba(59,130,246,.08));
+      color:var(--text); cursor:pointer;
+    }
+    .card{
+      background:var(--panel); border:1px solid var(--line);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+      padding:16px;
+    }
+    .hero{
+      display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;
+      margin-bottom:12px;
+    }
+    .hero h1{margin:0; font-size:24px}
+    .hero .sub{margin-top:6px; color:var(--muted); font-size:14px; line-height:1.5}
+    .chip{
+      display:flex; gap:12px; align-items:flex-start; margin-top:12px;
+      padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(2,6,23,.03);
+    }
+    .microchip{
+      width:44px; height:44px; border-radius:14px;
+      background: linear-gradient(135deg, rgba(109,40,217,.95), rgba(5,150,105,.55));
+      position:relative;
+      overflow:hidden;
+    }
+    .microchip:after{
+      content:"";
+      position:absolute;
+      inset:-30px;
+      background:linear-gradient(45deg, transparent, rgba(255,255,255,.25), transparent);
+      transform:rotate(20deg);
+      opacity:.55;
+    }
+    .muted{color:var(--muted)}
+    .kpi-row{
+      display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    .kpi .label{color:var(--muted); font-size:13px}
+    .kpi .value{font-size:26px; font-weight:900; margin-top:6px}
+
+    .kpi{
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(15,23,42,.10);
+      background:rgba(255,255,255,.72);
+    }
+    .panels{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin:12px 0;
+    }
+    .panel.book{grid-column:1 / 2}
+    .panel.timeline{grid-column:2 / 3}
+    .panel.vaccination{grid-column:1 / -1}
+
+    .panel h2{font-size:16px; margin:0}
+    .panel .hint{margin-top:6px; color:var(--muted); font-size:13px}
+    .row{
+      display:flex; gap:10px; align-items:center; margin-top:12px;
+    }
+    select, input{
+      width:100%; padding:10px 12px; border-radius:14px;
+      border:1px solid var(--line); background:rgba(255,255,255,.88);
+      color:var(--text); font-size:14px;
+    }
+    .table-wrap{
+      margin-top:10px; border:1px solid var(--line); border-radius:16px; overflow:auto; background:rgba(2,6,23,.02);
+    }
+    table{width:100%; border-collapse:collapse}
+    th, td{padding:11px 10px; border-bottom:1px solid rgba(15,23,42,.08); font-size:13px; text-align:left}
+    th{color:var(--muted); font-size:12px}
+    .pill{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted); font-size:12px;
+    }
+    .pill.ok{border-color:rgba(52,211,153,.35); color:rgba(52,211,153,.95)}
+    .pill.wait{border-color:rgba(251,191,36,.35); color:rgba(251,191,36,.95)}
+    .pill.info{border-color:rgba(167,139,250,.40); color:rgba(167,139,250,.95)}
+    @media (max-width: 960px){
+      .hero{grid-template-columns:1fr}
+      .panels{grid-template-columns:1fr}
+      .panel.book,.panel.timeline,.panel.vaccination{grid-column:auto}
+      .kpi-row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="nav">
+        <a class="active" href="#">Dashboard</a>
+      </div>
+
+      <div class="header-right">
+        <div class="nav nav-right">
+          <a href="#">My Pets</a>
+          <a href="#">Book</a>
+          <a href="#">Lost & Found</a>
+          <a href="#">Bills</a>
+          <a href="#">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="card">
+        <h1>Welcome back, Alex</h1>
+        <div class="sub">
+          Track your pet health across branches: appointments, prescriptions, vaccinations, bills, and microchip/lost-found records.
+        </div>
+
+        <div class="chip">
+          <div class="microchip"></div>
+          <div>
+            <div style="font-weight:800">Microchip Status</div>
+            <div class="muted" style="margin-top:4px">Chip ID: <strong>FC-9281-XX</strong> · Owner verified</div>
+            <div class="muted" style="margin-top:8px; font-size:13px">Last visit: Mar 10 · Next due: Rabies in 10 days</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="label">Upcoming</div>
+            <div class="value">2</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Next appointment tomorrow</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Outstanding</div>
+            <div class="value">$120</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Pay to book</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn" type="button" style="width:100%">Pay Invoice</button>
+        </div>
+
+        <div style="margin-top:10px; padding:12px; border-radius:16px; border:1px solid rgba(15,23,42,.10); background:rgba(255,255,255,.72)">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+            <div style="font-weight:900; font-size:13px">Quick Reminders</div>
+            <span class="pill info">Today</span>
+          </div>
+          <div class="muted" style="margin-top:6px; font-size:13px; line-height:1.45">
+            Unpaid bill detected and Rabies vaccination due soon.
+          </div>
+          <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
+            <span class="pill info">Billing</span>
+            <span class="pill wait">Vaccination</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panels">
+      <div class="card panel book">
+        <h2>Book an Appointment</h2>
+        <div class="hint">Choose branch and veterinarian</div>
+
+        <div class="row"><select><option>Select branch</option><option>Downtown Clinic</option></select></div>
+        <div class="row"><select><option>Select vet</option><option>Dr. Kim</option><option>Dr. Patel</option></select></div>
+        <div class="row"><input type="date" value="" aria-label="Pick a date"></div>
+        <div class="row"><button class="btn" type="button" style="width:100%">Find Time Slots</button></div>
+      </div>
+
+      <div class="card panel timeline">
+        <h2>Medical Timeline (Preview)</h2>
+        <div class="hint">Diagnoses, meds, vaccinations</div>
+
+        <div style="margin-top:12px; display:grid; gap:10px">
+          <div style="padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.72)">
+            <div style="font-weight:800">Mar 10</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Diagnosis: Allergy flare-up</div>
+            <div class="muted" style="font-size:13px; margin-top:6px">Medication: Antihistamine</div>
+          </div>
+          <div style="padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.72)">
+            <div style="font-weight:800">Feb 04</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Diagnosis: Dental check</div>
+            <div class="muted" style="font-size:13px; margin-top:6px">Notes: Routine cleaning</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card panel vaccination">
+        <h2>Vaccination Tracker</h2>
+        <div class="hint">Due soon alerts</div>
+
+        <div style="margin-top:12px; display:grid; gap:10px">
+          <div style="padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.72)">
+            <div style="font-weight:800">Rabies</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Due in 10 days</div>
+            <div style="margin-top:10px"><span class="pill wait">Due</span></div>
+          </div>
+          <div style="padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.72)">
+            <div style="font-weight:800">Distemper</div>
+            <div class="muted" style="font-size:13px; margin-top:4px">Next due in 6 months</div>
+            <div style="margin-top:10px"><span class="pill ok">Up to date</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="font-weight:900">Recent Activity</div>
+      <div class="muted" style="margin-top:6px; font-size:13px">Appointments and notes</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Branch</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mar 10</td>
+              <td>Medical Visit</td>
+              <td>Downtown</td>
+              <td><span class="pill ok">Completed</span></td>
+            </tr>
+            <tr>
+              <td>Mar 20</td>
+              <td>Appointment</td>
+              <td>Northside</td>
+              <td><span class="pill wait">Scheduled</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

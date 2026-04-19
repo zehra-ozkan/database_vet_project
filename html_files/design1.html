@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pet Owner Dashboard</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:rgba(255,255,255,.06);
+      --panel2:rgba(255,255,255,.08);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,.72);
+      --line:rgba(255,255,255,.10);
+      --primary:#6ea8fe;
+      --primary2:#3b82f6;
+      --success:#34d399;
+      --warning:#fbbf24;
+      --danger:#fb7185;
+      --radius:16px;
+      --shadow: 0 12px 40px rgba(0,0,0,.25);
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--font);
+      background: radial-gradient(900px 500px at 15% 10%, rgba(110,168,254,.25), transparent),
+                  radial-gradient(700px 400px at 90% 0%, rgba(52,211,153,.15), transparent),
+                  var(--bg);
+      color:var(--text);
+    }
+    a{color:inherit; text-decoration:none}
+    .wrap{display:flex; min-height:100vh}
+    aside{
+      width:260px; padding:20px;
+      border-right:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      padding:12px 10px; margin-bottom:16px;
+      border:1px solid var(--line); border-radius:14px;
+      background:rgba(255,255,255,.03);
+    }
+    .logo{
+      width:34px; height:34px; border-radius:10px;
+      background: linear-gradient(135deg, var(--primary), #22c55e);
+      box-shadow: 0 10px 25px rgba(110,168,254,.25);
+    }
+    nav .item{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 12px; border-radius:14px;
+      margin:6px 0; border:1px solid transparent;
+      background:transparent;
+    }
+    nav .item:hover{background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.08)}
+    nav .item.active{background:rgba(110,168,254,.15); border-color:rgba(110,168,254,.25)}
+    .main{flex:1; padding:22px}
+    .topbar{
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      margin-bottom:16px;
+    }
+    .welcome{
+      font-size:14px; color:var(--muted);
+    }
+    .welcome strong{color:var(--text)}
+    .controls{display:flex; gap:10px; align-items:center}
+    .select, .btn, .ghost{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      padding:10px 12px; border-radius:12px;
+      font-size:14px;
+    }
+    .select{min-width:190px}
+    .btn{
+      border-color:rgba(110,168,254,.35);
+      background: linear-gradient(135deg, rgba(110,168,254,.25), rgba(59,130,246,.10));
+    }
+    .ghost{background:transparent}
+    .grid-kpis{
+      display:grid;
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+      gap:12px; margin-bottom:14px;
+    }
+    .card{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow: var(--shadow);
+    }
+    .kpi .label{font-size:13px; color:var(--muted)}
+    .kpi .value{font-size:24px; font-weight:800; margin-top:6px}
+    .kpi .badge{
+      margin-top:10px; display:inline-block;
+      padding:6px 10px; border-radius:999px; font-size:12px;
+      border:1px solid var(--line);
+      color:var(--muted);
+    }
+    .layout2{
+      display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;
+      margin-bottom:14px;
+    }
+    .quick-actions{
+      display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:10px; margin-top:10px;
+    }
+    .action{
+      text-align:left;
+      border-radius:14px;
+      padding:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      min-height:86px;
+    }
+    .action h3{margin:0 0 6px; font-size:14px}
+    .action p{margin:0; color:var(--muted); font-size:13px; line-height:1.35}
+    table{width:100%; border-collapse:separate; border-spacing:0}
+    thead th{
+      text-align:left; font-size:12px; color:var(--muted);
+      padding:10px 10px; border-bottom:1px solid var(--line);
+    }
+    tbody td{
+      padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.07);
+      font-size:13px;
+    }
+    .pill{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      color:var(--muted);
+      font-size:12px;
+    }
+    .pill.success{border-color:rgba(52,211,153,.35); color:rgba(52,211,153,.95)}
+    .pill.warning{border-color:rgba(251,191,36,.35); color:rgba(251,191,36,.95)}
+    .pill.danger{border-color:rgba(251,113,133,.35); color:rgba(251,113,133,.95)}
+    @media (max-width: 980px){
+      aside{display:none}
+      .grid-kpis{grid-template-columns:repeat(2, minmax(0, 1fr))}
+      .layout2{grid-template-columns:1fr}
+      .quick-actions{grid-template-columns:1fr}
+      .select{min-width:unset}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside>
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div style="font-weight:800">VetChain</div>
+          <div style="font-size:12px;color:rgba(234,240,255,.7)">Clinic Network</div>
+        </div>
+      </div>
+      <nav>
+        <a class="item active" href="#"><span>Dashboard</span><span>•</span></a>
+        <a class="item" href="#"><span>My Pets</span><span>•</span></a>
+        <a class="item" href="#"><span>Appointments</span><span>•</span></a>
+        <a class="item" href="#"><span>Billing</span><span>•</span></a>
+        <a class="item" href="#"><span>Medical Timeline</span><span>•</span></a>
+        <a class="item" href="#"><span>Lost & Found</span><span>•</span></a>
+      </nav>
+      <div style="margin-top:16px">
+        <a class="ghost" style="display:block; text-align:center" href="#">Logout</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="welcome">
+          Welcome, <strong>Alex</strong> · <span id="role">Pet Owner</span>
+        </div>
+        <div class="controls">
+          <select class="select">
+            <option>Select branch</option>
+            <option>Downtown Clinic</option>
+            <option>Northside Clinic</option>
+          </select>
+          <button class="btn" type="button">Book Appointment</button>
+        </div>
+      </div>
+
+      <section class="grid-kpis">
+        <div class="card kpi">
+          <div class="label">Upcoming</div>
+          <div class="value">2</div>
+          <div class="badge">Next: tomorrow</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Past Visits</div>
+          <div class="value">8</div>
+          <div class="badge">This year</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Outstanding Bills</div>
+          <div class="value">$120</div>
+          <div class="badge">1 unpaid invoice</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Vaccinations Due</div>
+          <div class="value">1</div>
+          <div class="badge">Due soon</div>
+        </div>
+      </section>
+
+      <section class="layout2">
+        <div class="card">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+            <div>
+              <div style="font-weight:800">Quick Actions</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px">Common tasks in one place</div>
+            </div>
+          </div>
+          <div class="quick-actions">
+            <div class="action">
+              <h3>Book Appointment</h3>
+              <p>Choose branch, vet, and time slot</p>
+            </div>
+            <div class="action">
+              <h3>Create Lost Report</h3>
+              <p>Lost pet help across branches</p>
+            </div>
+            <div class="action">
+              <h3>Microchip Info</h3>
+              <p>View chip ID and owner details</p>
+            </div>
+          </div>
+
+          <div style="margin-top:14px">
+            <div style="font-weight:800; margin-bottom:8px">Upcoming Appointments</div>
+            <div style="border:1px solid var(--line); border-radius:14px; overflow:auto; background:rgba(0,0,0,.10)">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Veterinarian</th>
+                    <th>Branch</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Mar 20</td>
+                    <td>10:30</td>
+                    <td>Dr. Kim</td>
+                    <td>Downtown</td>
+                    <td><span class="pill success">Confirmed</span></td>
+                  </tr>
+                  <tr>
+                    <td>Mar 28</td>
+                    <td>15:00</td>
+                    <td>Dr. Patel</td>
+                    <td>Northside</td>
+                    <td><span class="pill warning">Pending</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:800">Notifications</div>
+          <div style="color:var(--muted); font-size:13px; margin-top:6px">Reminders and alerts</div>
+
+          <div style="margin-top:12px; display:grid; gap:10px">
+            <div style="padding:12px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.03)">
+              <div style="font-weight:700">Unpaid bill detected</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px">Pay $120 to unlock booking slots.</div>
+              <div style="margin-top:10px">
+                <button class="btn" type="button" style="width:100%">Pay Now</button>
+              </div>
+            </div>
+
+            <div style="padding:12px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.03)">
+              <div style="font-weight:700">Vaccination due</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px">Rabies vaccine due in 10 days.</div>
+              <div style="margin-top:10px">
+                <button class="ghost" type="button" style="width:100%">Schedule</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>

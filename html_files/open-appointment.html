@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Appointment - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="vet-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="vet-dashboard.html">Dashboard</a>
+          <a href="vet-appointments.html" class="active">Appointments</a>
+          <a href="medical-timeline.html">Timeline</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">DK</summary>
+            <div class="profile-menu">
+              <a href="vet-dashboard.html#profile">My Profile</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Appointment: Buddy</h1>
+      <p class="page-subtitle">Mar 20, 10:30 · Alex J. · Downtown Clinic</p>
+
+      <div class="card" style="background: rgba(255,255,255,.72); margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Medical history</h2>
+        <p class="muted" style="margin: 0 0 8px;">Past diagnoses, prescriptions, vaccinations, allergies</p>
+        <div class="tile">
+          <div style="font-weight: 700;">Allergies</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Chicken, grain</p>
+        </div>
+        <div class="tile">
+          <div style="font-weight: 700;">Recent visits</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Mar 10: Allergy flare-up · Antihistamine</p>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Feb 04: Dental check · Routine cleaning</p>
+        </div>
+        <div class="tile">
+          <div style="font-weight: 700;">Vaccinations</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Distemper: up to date · Rabies: due in 10 days</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Create medical visit record</h2>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13px;">Record diagnosis, symptoms, treatment, prescriptions, follow-up. Prescriptions trigger inventory check and deduction.</p>
+        <form>
+          <div class="form-group">
+            <label>Diagnosis</label>
+            <input type="text" placeholder="e.g. Allergy flare-up" />
+          </div>
+          <div class="form-group">
+            <label>Symptoms</label>
+            <textarea placeholder="Observed symptoms..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Treatment / notes</label>
+            <textarea placeholder="Treatment decisions, follow-up notes..."></textarea>
+          </div>
+          <div class="card" style="background: rgba(2,6,23,.02); margin-bottom: 16px;">
+            <h3 style="font-size: 14px; margin: 0 0 10px;">Prescription (optional)</h3>
+            <p class="muted" style="margin: 0 0 12px; font-size: 12px;">System checks branch inventory and deducts stock when prescribed</p>
+            <div class="form-row">
+              <div class="form-group"><label>Medication</label><select><option value="">Select</option><option>Antihistamine</option><option>Antibiotic</option></select></div>
+              <div class="form-group"><label>Dosage</label><input type="text" placeholder="e.g. 10mg 2x daily" /></div>
+              <div class="form-group"><label>Duration</label><input type="text" placeholder="e.g. 7 days" /></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Follow-up notes</label>
+            <input type="text" placeholder="e.g. Recheck in 2 weeks" />
+          </div>
+          <div class="card" style="background: rgba(2,6,23,.02); margin-bottom: 16px;">
+            <h3 style="font-size: 14px; margin: 0 0 10px;">Vaccination plan</h3>
+            <p class="muted" style="margin: 0 0 12px; font-size: 12px;">Define schedule by species, breed, and age; system computes next due dates</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Vaccine</label>
+                <select>
+                  <option value="">Select</option>
+                  <option>Rabies</option>
+                  <option>Distemper</option>
+                  <option>Parvovirus</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Plan interval</label>
+                <select>
+                  <option value="">Select</option>
+                  <option>Every 6 months</option>
+                  <option>Every 12 months</option>
+                  <option>Every 36 months</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start date</label>
+                <input type="date" />
+              </div>
+              <div class="form-group">
+                <label>Notes</label>
+                <input type="text" placeholder="e.g. Indoor cat, low exposure" />
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn">Save visit record</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

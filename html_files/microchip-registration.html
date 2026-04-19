@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Microchip Registration - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Microchip Registration</h1>
+      <p class="page-subtitle">Register a unique microchip for your pet. Each chip maps to exactly one pet; each pet can have at most one active microchip.</p>
+
+      <div class="chip mt-2" style="max-width: 480px;">
+        <div class="microchip"></div>
+        <div>
+          <div style="font-weight: 800;">Buddy</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Chip ID: <strong>FC-9281-XX</strong></p>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Implantation date: Jan 15, 2022</p>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Issuer: ISO compliant · Status: Verified</p>
+        </div>
+      </div>
+
+      <div class="card mt-3" style="border-style: dashed;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Register New Microchip</h2>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13px;">Link a chip ID to a pet. Uniqueness enforced: one chip per pet, one pet per chip.</p>
+        <form>
+          <div class="form-group">
+            <label>Pet</label>
+            <select><option value="">Select pet</option><option>Buddy</option><option>Luna</option></select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Chip ID</label>
+              <input type="text" placeholder="e.g. FC-9281-XX" required />
+            </div>
+            <div class="form-group">
+              <label>Implantation date</label>
+              <input type="date" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Issuer / Status</label>
+            <input type="text" placeholder="e.g. ISO compliant" />
+          </div>
+          <button type="submit" class="btn">Register microchip</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vaccination Compliance - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="manager-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="manager-dashboard.html">Dashboard</a>
+          <a href="inventory.html">Inventory</a>
+          <a href="vaccination-compliance.html" class="active">Vaccination</a>
+          <a href="login.html">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Vaccination compliance</h1>
+      <p class="page-subtitle">Indicators from stored due dates and records. Upcoming/overdue vaccines highlighted.</p>
+
+      <div class="kpi-row mb-2">
+        <div class="kpi">
+          <div class="label">Overdue</div>
+          <div class="value">5</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Due within 30 days</div>
+          <div class="value">12</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Up to date</div>
+          <div class="value">89</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="max-width: 200px;"><label>Branch</label><select><option>All</option><option>Downtown</option><option>Northside</option></select></div>
+        <div class="form-group" style="max-width: 200px;"><label>Status</label><select><option>Overdue</option><option>Due soon</option><option>All</option></select></div>
+      </div>
+
+      <div class="table-wrap mt-2">
+        <table>
+          <thead>
+            <tr><th>Pet</th><th>Owner</th><th>Vaccine</th><th>Last date</th><th>Next due</th><th>Branch</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Buddy</td><td>Alex J.</td><td>Rabies</td><td>Mar 18, 2023</td><td>Mar 18, 2024</td><td>Downtown</td>
+              <td><span class="pill danger">Overdue</span></td>
+            </tr>
+            <tr>
+              <td>Max</td><td>Sarah L.</td><td>Distemper</td><td>Jan 10, 2024</td><td>Apr 10, 2024</td><td>Downtown</td>
+              <td><span class="pill wait">Due soon</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

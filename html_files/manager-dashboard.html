@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manager Dashboard - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="manager-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="manager-dashboard.html" class="active">Dashboard</a>
+          <a href="inventory.html">Inventory</a>
+          <a href="vaccination-compliance.html">Vaccination</a>
+          <a href="login.html">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="card">
+        <h1>Manager dashboard</h1>
+        <p class="sub">Track branch medicine inventory, supply logs, stock usage, billing compliance, and vaccination indicators across branches.</p>
+        <div class="kpi-row mt-2">
+          <div class="kpi">
+            <div class="label">Low stock items</div>
+            <div class="value">3</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Overdue vaccinations</div>
+            <div class="value">5</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Outstanding invoices</div>
+            <div class="value">$450</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Quick access</h2>
+        <a href="inventory.html" class="btn block mt-1">Inventory & supply</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Alerts</h2>
+      <p class="page-subtitle">Stock, compliance, and operational reminders</p>
+      <div class="panels" style="grid-template-columns: 1fr;">
+        <div class="tile" style="border-left: 4px solid var(--warning);">
+          <div style="font-weight: 700;">Low stock</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Antihistamine at Downtown · Antibiotic at Northside</p>
+        </div>
+        <div class="tile" style="border-left: 4px solid var(--danger);">
+          <div style="font-weight: 700;">Vaccination overdue</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">5 pets with overdue vaccines across branches</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Reports snapshot</h2>
+      <p class="page-subtitle">Key analytics for inventory usage, vaccination compliance, and revenue by branch.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Report</th><th>Branch</th><th>Period</th><th>Indicator</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Stock consumption</td><td>Downtown</td><td>Mar</td><td>142 units</td><td>Top: Antibiotic 500mg</td></tr>
+            <tr><td>Vaccination compliance</td><td>All</td><td>Mar</td><td>92%</td><td>Goal: 95%</td></tr>
+            <tr><td>Overdue vaccinations</td><td>Northside</td><td>Mar</td><td>5 pets</td><td>Follow-up calls queued</td></tr>
+            <tr><td>Wasted inventory (expired)</td><td>Downtown</td><td>Mar</td><td>5 units</td><td>Antibiotic 500mg</td></tr>
+            <tr><td>Revenue per branch</td><td>All</td><td>Mar</td><td>$24,300</td><td>Northside +8% MoM</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Vaccination Plan & Records</h2>
+      <p class="page-subtitle">Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights</p>
+      <div class="panels" style="grid-template-columns: 1fr 1fr; margin-top: 12px;">
+        <div class="tile">
+          <div style="font-weight: 700;">Policy owner</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Regional medical director</p>
+        </div>
+        <div class="tile">
+          <div style="font-weight: 700;">Plan coverage</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Rabies, Distemper, FVRCP, Parvo</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr><th>Branch</th><th>Pet</th><th>Owner</th><th>Vaccine</th><th>Date</th><th>Batch</th><th>Next due</th><th>Admin vet</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Downtown</td><td>Buddy</td><td>Alex J.</td><td>Rabies</td><td>Jan 08</td><td>RB-2219</td><td>Feb 15</td><td>Dr. Kim</td>
+              <td><span class="pill danger">Overdue 42d</span></td>
+            </tr>
+            <tr>
+              <td>Downtown</td><td>Luna</td><td>Sara B.</td><td>Distemper</td><td>Feb 05</td><td>DS-1132</td><td>Mar 06</td><td>Dr. Kim</td>
+              <td><span class="pill danger">Overdue 31d</span></td>
+            </tr>
+            <tr>
+              <td>Northside</td><td>Whiskers</td><td>Mike R.</td><td>FVRCP</td><td>Jan 22</td><td>FV-8841</td><td>Feb 16</td><td>Dr. Patel</td>
+              <td><span class="pill danger">Overdue 35d</span></td>
+            </tr>
+            <tr>
+              <td>Northside</td><td>Max</td><td>Sarah L.</td><td>Rabies</td><td>Mar 10</td><td>RB-2490</td><td>Apr 10</td><td>Dr. Patel</td>
+              <td><span class="pill wait">Due in 12d</span></td>
+            </tr>
+            <tr>
+              <td>Downtown</td><td>Shadow</td><td>Chris T.</td><td>Parvo</td><td>Jan 29</td><td>PV-4450</td><td>Feb 20</td><td>Dr. Chen</td>
+              <td><span class="pill danger">Overdue 47d</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

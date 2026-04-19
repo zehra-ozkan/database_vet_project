@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - Tabs</title>
+  <style>
+    :root{
+      --bg:#0b1220; --text:#eaf0ff; --muted:rgba(234,240,255,.72);
+      --card:rgba(255,255,255,.06); --line:rgba(255,255,255,.10);
+      --primary:#7dd3fc; --primary2:#22c55e; --shadow:0 14px 45px rgba(0,0,0,.25);
+      --r:18px; --font:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--font); color:var(--text);
+      background:
+        radial-gradient(900px 500px at 20% 0%, rgba(125,211,252,.18), transparent),
+        radial-gradient(700px 420px at 90% 20%, rgba(34,197,94,.14), transparent),
+        var(--bg);
+    }
+    .wrap{max-width:1100px; margin:0 auto; padding:18px}
+    .top{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:12px 0 18px;
+    }
+    .brand{display:flex; align-items:center; gap:12px}
+    .mark{
+      width:40px; height:40px; border-radius:14px;
+      background:linear-gradient(135deg, rgba(125,211,252,.95), rgba(34,197,94,.60));
+      box-shadow:0 12px 30px rgba(125,211,252,.15);
+    }
+    .title strong{display:block; font-size:18px}
+    .title span{color:var(--muted); font-size:12px}
+    .top-actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end}
+    .btn{
+      padding:10px 14px; border-radius:14px;
+      border:1px solid var(--line); background:rgba(255,255,255,.03); color:var(--text);
+      cursor:pointer;
+    }
+    .btn.primary{
+      border-color:rgba(125,211,252,.35);
+      background:linear-gradient(135deg, rgba(125,211,252,.22), rgba(59,130,246,.10));
+    }
+
+    /* Tabs using radio buttons (pure HTML/CSS) */
+    .tabs{
+      margin-top:10px;
+      background:rgba(255,255,255,.02);
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      padding:10px;
+      box-shadow:var(--shadow);
+    }
+    .tab-row{
+      display:flex; gap:8px; flex-wrap:wrap;
+      padding:6px;
+      border-radius:14px;
+      margin-bottom:12px;
+    }
+    .tab{
+      position:relative;
+      display:inline-flex; align-items:center; gap:8px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid transparent;
+      background:transparent;
+      cursor:pointer;
+      color:var(--muted);
+      user-select:none;
+      font-weight:700;
+      font-size:14px;
+    }
+    .tab:hover{background:rgba(255,255,255,.04)}
+    input[name="tab"]{position:absolute; left:-9999px}
+    #t-overview:checked ~ .tab-row label[for="t-overview"],
+    #t-appointments:checked ~ .tab-row label[for="t-appointments"],
+    #t-health:checked ~ .tab-row label[for="t-health"],
+    #t-lost:checked ~ .tab-row label[for="t-lost"]{
+      color:var(--text);
+      border-color:rgba(125,211,252,.35);
+      background:rgba(125,211,252,.12);
+    }
+
+    .panel{
+      display:none;
+      gap:12px;
+      grid-template-columns: 1.1fr .9fr;
+    }
+    #t-overview:checked ~ .panels #p-overview,
+    #t-appointments:checked ~ .panels #p-appointments,
+    #t-health:checked ~ .panels #p-health,
+    #t-lost:checked ~ .panels #p-lost{
+      display:grid;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      padding:14px;
+    }
+    .kpi-row{display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:12px}
+    .kpi{padding:12px; border-radius:16px; border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.12)}
+    .kpi .lab{color:var(--muted); font-size:12px}
+    .kpi .val{font-size:26px; font-weight:900; margin-top:6px}
+    .muted{color:var(--muted)}
+    .table{
+      width:100%; border-collapse:collapse; border-spacing:0;
+      overflow:hidden; border-radius:16px;
+      border:1px solid var(--line); background:rgba(0,0,0,.10);
+    }
+    .table th,.table td{
+      text-align:left; padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.07);
+      font-size:13px;
+    }
+    .table th{color:var(--muted); font-size:12px}
+    .pill{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted); font-size:12px;
+    }
+    .pill.ok{border-color:rgba(34,197,94,.35); color:rgba(34,197,94,.95)}
+    .pill.wait{border-color:rgba(251,191,36,.35); color:rgba(251,191,36,.95)}
+    .pill.warn{border-color:rgba(251,113,133,.35); color:rgba(251,113,133,.95)}
+
+    @media (max-width: 980px){
+      .panel{grid-template-columns:1fr}
+      .kpi-row{grid-template-columns:repeat(2, minmax(0,1fr))}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="mark"></div>
+        <div class="title">
+          <strong>VetChain</strong>
+          <span>Pet Owner Dashboard</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn" type="button">My Pets</button>
+        <button class="btn primary" type="button">Book Appointment</button>
+        <button class="btn" type="button">Logout</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <!-- Radio buttons for tabs -->
+      <input id="t-overview" name="tab" type="radio" checked />
+      <input id="t-appointments" name="tab" type="radio" />
+      <input id="t-health" name="tab" type="radio" />
+      <input id="t-lost" name="tab" type="radio" />
+
+      <div class="tab-row">
+        <label class="tab" for="t-overview">Overview</label>
+        <label class="tab" for="t-appointments">Appointments</label>
+        <label class="tab" for="t-health">Health Timeline</label>
+        <label class="tab" for="t-lost">Lost & Found</label>
+      </div>
+
+      <div class="panels">
+        <section id="p-overview" class="panel">
+          <div class="card">
+            <div class="kpi-row">
+              <div class="kpi"><div class="lab">Upcoming</div><div class="val">2</div></div>
+              <div class="kpi"><div class="lab">Past Visits</div><div class="val">8</div></div>
+              <div class="kpi"><div class="lab">Outstanding</div><div class="val">$120</div></div>
+              <div class="kpi"><div class="lab">Vaccines Due</div><div class="val">1</div></div>
+            </div>
+            <div class="muted" style="font-size:13px; line-height:1.6">
+              Quick status for your pet across branches: scheduling, prescriptions, vaccination due dates, billing, and microchip/lost-found records.
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:900; margin-bottom:8px">Today Alerts</div>
+            <div style="border:1px solid rgba(255,255,255,.10); border-radius:16px; padding:12px; background:rgba(0,0,0,.10)">
+              <div style="font-weight:800">Unpaid bill</div>
+              <div class="muted" style="margin-top:4px; font-size:13px">Pay $120 to unlock booking slots.</div>
+              <div style="margin-top:10px">
+                <button class="btn primary" type="button" style="width:100%">Pay Now</button>
+              </div>
+            </div>
+            <div style="height:10px"></div>
+            <div style="border:1px solid rgba(255,255,255,.10); border-radius:16px; padding:12px; background:rgba(0,0,0,.10)">
+              <div style="font-weight:800">Vaccination due</div>
+              <div class="muted" style="margin-top:4px; font-size:13px">Rabies due in 10 days.</div>
+              <div style="margin-top:10px">
+                <button class="btn" type="button" style="width:100%">Schedule</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="p-appointments" class="panel">
+          <div class="card" style="grid-column:1 / -1">
+            <div style="font-weight:900; margin-bottom:10px">Upcoming Appointments</div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Veterinarian</th>
+                  <th>Branch</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Mar 20</td><td>10:30</td><td>Dr. Kim</td><td>Downtown</td>
+                  <td><span class="pill ok">Confirmed</span></td>
+                </tr>
+                <tr>
+                  <td>Mar 28</td><td>15:00</td><td>Dr. Patel</td><td>Northside</td>
+                  <td><span class="pill wait">Pending</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="p-health" class="panel">
+          <div class="card">
+            <div style="font-weight:900; margin-bottom:10px">Medical Timeline</div>
+            <div style="display:grid; gap:10px">
+              <div style="padding:12px; border:1px solid rgba(255,255,255,.10); border-radius:16px; background:rgba(0,0,0,.10)">
+                <div style="font-weight:900">Mar 10</div>
+                <div class="muted" style="margin-top:4px; font-size:13px">Allergy flare-up · Antihistamine</div>
+              </div>
+              <div style="padding:12px; border:1px solid rgba(255,255,255,.10); border-radius:16px; background:rgba(0,0,0,.10)">
+                <div style="font-weight:900">Feb 04</div>
+                <div class="muted" style="margin-top:4px; font-size:13px">Dental check · Routine cleaning</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:900; margin-bottom:8px">Microchip</div>
+            <div class="muted" style="font-size:13px; line-height:1.6">
+              Chip ID: <strong>FC-9281-XX</strong><br/>
+              Verified owner record: <strong>Yes</strong>
+            </div>
+            <div style="margin-top:12px">
+              <button class="btn" type="button" style="width:100%">View Pet History</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="p-lost" class="panel">
+          <div class="card">
+            <div style="font-weight:900; margin-bottom:10px">Lost & Found Reports</div>
+            <div style="display:grid; gap:10px">
+              <div style="padding:12px; border:1px solid rgba(255,255,255,.10); border-radius:16px; background:rgba(0,0,0,.10)">
+                <div style="font-weight:800">Lost Report</div>
+                <div class="muted" style="margin-top:4px; font-size:13px">Submitted at Downtown · 2 days ago</div>
+                <div style="margin-top:10px"><span class="pill warn">Open</span></div>
+              </div>
+              <div style="padding:12px; border:1px solid rgba(255,255,255,.10); border-radius:16px; background:rgba(0,0,0,.10)">
+                <div style="font-weight:800">Found Report</div>
+                <div class="muted" style="margin-top:4px; font-size:13px">Northside · 10 hours ago</div>
+                <div style="margin-top:10px"><span class="pill ok">Matched</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:900; margin-bottom:8px">Create New</div>
+            <div class="muted" style="font-size:13px; line-height:1.6">
+              Start a lost/found report and link it to the pet microchip for cross-branch visibility.
+            </div>
+            <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+              <button class="btn primary" type="button">Create Lost</button>
+              <button class="btn" type="button">Create Found</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

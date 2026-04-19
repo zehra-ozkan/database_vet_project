@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Supply Logging - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="manager-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="manager-dashboard.html">Dashboard</a>
+          <a href="inventory.html">Inventory</a>
+          <a href="shipment-logging.html" class="active">Shipments</a>
+          <a href="stock-thresholds.html">Thresholds</a>
+          <a href="vaccination-compliance.html">Vaccination</a>
+          <a href="lost-found-reports.html">Lost/Found</a>
+          <a href="login.html">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Log supply</h1>
+      <p class="page-subtitle">Log new medicine supply for a branch with batch number, quantity, unit cost, and expiration date</p>
+
+      <form>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Branch</label>
+            <select required><option value="">Select branch</option><option>Downtown Clinic</option><option>Northside Clinic</option></select>
+          </div>
+          <div class="form-group">
+            <label>Medicine / item</label>
+            <select required><option value="">Select</option><option>Antihistamine 10mg</option><option>Antibiotic 500mg</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Batch number</label>
+            <input type="text" placeholder="e.g. BATCH-2024-001" required />
+          </div>
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" min="1" placeholder="100" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Unit cost ($)</label>
+            <input type="number" step="0.01" min="0" placeholder="2.50" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Expiration date</label>
+          <input type="date" />
+        </div>
+        <button type="submit" class="btn">Log supply</button>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

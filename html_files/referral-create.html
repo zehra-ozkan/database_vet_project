@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create Referral - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="vet-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="vet-dashboard.html">Dashboard</a>
+          <a href="vet-appointments.html">Appointments</a>
+          <a href="medical-timeline.html">Timeline</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">DK</summary>
+            <div class="profile-menu">
+              <a href="vet-dashboard.html#profile">My Profile</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Create referral</h1>
+      <p class="page-subtitle">Link pet to target branch/specialist for specialized care. Ensures continuity of care across the chain.</p>
+
+      <form>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Pet</label>
+            <select required><option value="">Select pet</option><option>Buddy (Alex J.)</option><option>Max (Sarah L.)</option></select>
+          </div>
+          <div class="form-group">
+            <label>Target branch</label>
+            <select required><option value="">Select branch</option><option>Downtown Clinic</option><option>Northside Clinic</option></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Target specialist / veterinarian</label>
+          <select><option value="">Select</option><option>Dr. Chen (Surgery)</option><option>Dr. Patel (Dental)</option></select>
+        </div>
+        <div class="form-group">
+          <label>Reason for referral</label>
+          <textarea placeholder="Describe the need for specialized care..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Relevant history / notes</label>
+          <textarea placeholder="Key clinical details for the specialist..."></textarea>
+        </div>
+        <button type="submit" class="btn">Create referral</button>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

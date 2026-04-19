@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Thresholds & Waste - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="manager-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="manager-dashboard.html">Dashboard</a>
+          <a href="inventory.html">Inventory</a>
+          <a href="shipment-logging.html">Shipments</a>
+          <a href="stock-thresholds.html" class="active">Thresholds</a>
+          <a href="vaccination-compliance.html">Vaccination</a>
+          <a href="lost-found-reports.html">Lost/Found</a>
+          <a href="login.html">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Stock thresholds & waste tracking</h1>
+      <p class="page-subtitle">Define minimum thresholds. Expired/damaged items are removed from available stock; waste logs are stored.</p>
+
+      <div class="card" style="margin-bottom: 24px;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Set minimum threshold</h2>
+        <form>
+          <div class="form-row">
+            <div class="form-group"><label>Branch</label><select><option>Downtown</option><option>Northside</option></select></div>
+            <div class="form-group"><label>Medicine</label><select><option>Antihistamine 10mg</option><option>Antibiotic 500mg</option></select></div>
+            <div class="form-group"><label>Minimum quantity</label><input type="number" min="0" placeholder="20" /></div>
+          </div>
+          <button type="submit" class="btn">Update threshold</button>
+        </form>
+      </div>
+
+      <h2 style="font-size: 16px; margin: 0 0 12px;">Current thresholds</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Medicine</th><th>Branch</th><th>Min threshold</th><th>Current stock</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Antihistamine 10mg</td><td>Downtown</td><td>20</td><td>12</td><td><span class="pill wait">Below</span></td></tr>
+            <tr><td>Antibiotic 500mg</td><td>Northside</td><td>15</td><td>8</td><td><span class="pill wait">Below</span></td></tr>
+            <tr><td>Antihistamine 10mg</td><td>Northside</td><td>20</td><td>45</td><td><span class="pill ok">OK</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 style="font-size: 16px; margin: 24px 0 12px;">Waste log</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Medicine</th><th>Branch</th><th>Quantity</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>Mar 01</td><td>Expired antibiotic</td><td>Downtown</td><td>5</td><td>Expired</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browse & Book - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    .book-layout { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
+    .book-form { position: sticky; top: 24px; }
+    @media (max-width: 900px) { .book-layout { grid-template-columns: 1fr; } .book-form { position: static; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html" class="active">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Browse & Book</h1>
+    <p class="page-subtitle">Filter branches and veterinarians, then book an appointment. System validates conflicts, vet limits, and unpaid bills.</p>
+
+    <div class="book-layout mt-2">
+      <div>
+        <div class="card" style="margin-bottom: 20px;">
+          <h2 style="font-size: 15px; margin: 0 0 12px; font-weight: 700;">Filters</h2>
+          <div class="form-row">
+            <div class="form-group"><label>Branch</label><select><option>All</option><option>Downtown</option><option>Northside</option></select></div>
+            <div class="form-group"><label>Specialization</label><select><option>All</option><option>General</option><option>Dental</option><option>Surgery</option></select></div>
+            <div class="form-group"><label>Species</label><select><option>All</option><option>Dogs</option><option>Cats</option></select></div>
+            <div class="form-group"><label>Date</label><input type="date" /></div>
+          </div>
+          <button class="btn">Apply</button>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+          <h2 style="font-size: 15px; margin: 0 0 12px; font-weight: 700;">Branches</h2>
+          <div class="tile">
+            <div style="font-weight: 800;">Downtown Clinic</div>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">123 Main St · Mon–Fri 8:00–18:00</p>
+          </div>
+          <div class="tile">
+            <div style="font-weight: 800;">Northside Clinic</div>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">456 Oak Ave · Mon–Sat 9:00–17:00</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 style="font-size: 15px; margin: 0 0 12px; font-weight: 700;">Veterinarians</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Branch</th><th>Specialization</th><th>Species</th></tr></thead>
+              <tbody>
+                <tr><td>Dr. Kim</td><td>Downtown</td><td>General</td><td>Dogs, Cats</td></tr>
+                <tr><td>Dr. Patel</td><td>Northside</td><td>Dental</td><td>Dogs</td></tr>
+                <tr><td>Dr. Chen</td><td>Downtown</td><td>Surgery</td><td>Dogs, Cats</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card book-form">
+        <h2 style="font-size: 15px; margin: 0 0 16px; font-weight: 700;">Book appointment</h2>
+        <form>
+          <div class="form-group">
+            <label>Pet</label>
+            <select id="petSelect" required><option value="">Select pet</option><option>Buddy</option><option>Luna</option></select>
+          </div>
+          <div class="form-group">
+            <label>Visit type</label>
+            <select id="visitTypeSelect" required>
+              <option value="">Select type</option>
+              <option>Vaccination - Rabies</option>
+              <option>Vaccination - Distemper</option>
+              <option>Checkup</option>
+              <option>Dental consult</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Branch</label>
+            <select id="branchSelect" required><option value="">Select branch</option><option>Downtown Clinic</option><option>Northside Clinic</option></select>
+          </div>
+          <div class="form-group">
+            <label>Veterinarian</label>
+            <select id="vetSelect" required><option value="">Select vet</option><option>Dr. Kim (Downtown)</option><option>Dr. Patel (Northside)</option><option>Dr. Chen (Downtown)</option></select>
+          </div>
+          <div class="form-group">
+            <label>Preferred date</label>
+            <input type="date" required />
+          </div>
+          <div class="form-group">
+            <label>Time slot</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;"><input type="radio" name="slot" /> 09:00</label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;"><input type="radio" name="slot" /> 10:30</label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;"><input type="radio" name="slot" /> 14:00</label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;"><input type="radio" name="slot" /> 15:30</label>
+            </div>
+            <p class="muted" style="font-size: 12px; margin-top: 6px;">Pick a date first to load slots</p>
+          </div>
+          <button type="submit" class="btn block">Confirm booking</button>
+        </form>
+        
+      </div>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const setSelectValue = (select, value) => {
+      if (!select || !value) return;
+      const option = Array.from(select.options).find(
+        (item) => item.value === value || item.text === value
+      );
+      if (option) {
+        select.value = option.value;
+      }
+    };
+
+    setSelectValue(document.getElementById("petSelect"), params.get("pet"));
+    setSelectValue(document.getElementById("visitTypeSelect"), params.get("visit"));
+    setSelectValue(document.getElementById("branchSelect"), params.get("branch"));
+    setSelectValue(document.getElementById("vetSelect"), params.get("vet"));
+  </script>
+</body>
+</html>

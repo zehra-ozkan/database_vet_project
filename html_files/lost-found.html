@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lost & Found - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html" class="active">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Lost & Found Registry</h1>
+      <p class="page-subtitle">Create lost reports for your pet. Cross-branch visibility helps reunite pets with owners.</p>
+
+      <div class="card" style="margin-bottom: 24px; border-style: dashed;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Create Lost Report</h2>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13px;">Report a lost pet with date, last known location, and details. Linked to microchip for cross-branch lookup.</p>
+        <form>
+          <div class="form-row">
+            <div class="form-group"><label>Pet</label><select><option>Buddy</option><option>Luna</option></select></div>
+            <div class="form-group"><label>Lost date</label><input type="date" /></div>
+          </div>
+          <div class="form-group">
+            <label>Last known location</label>
+            <input type="text" placeholder="e.g. Main St Park, Downtown" />
+          </div>
+          <div class="form-group">
+            <label>Additional details</label>
+            <textarea placeholder="Description, distinguishing marks, collar color..."></textarea>
+          </div>
+          <button type="submit" class="btn">Submit lost report</button>
+        </form>
+      </div>
+
+      <h2 style="font-size: 16px; margin: 0 0 12px;">My Lost Reports</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Pet</th><th>Lost date</th><th>Location</th><th>Status</th><th>Created</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Buddy</td><td>Mar 15</td><td>City Park</td>
+              <td><span class="pill wait">Open</span></td><td>Mar 15, 2024</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

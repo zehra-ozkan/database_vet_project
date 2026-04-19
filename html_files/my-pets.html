@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Pets - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="owner-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="owner-dashboard.html">Dashboard</a>
+          <a href="book-appointment.html">Book</a>
+          <a href="appointments.html">Appointments</a>
+          <a href="lost-found.html">Lost & Found</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">AJ</summary>
+            <div class="profile-menu">
+              <a href="my-pets.html">My Pets</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">My Pets</h1>
+      <p class="page-subtitle">Manage pet profiles: species, breed, age, and allergies</p>
+
+      <div class="panels" style="grid-template-columns: 1fr;">
+        <div class="tile" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;">
+          <div>
+            <div style="font-weight: 800; font-size: 16px;">Buddy</div>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Dog · Golden Retriever · 4 years</p>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Allergies: Chicken, grain</p>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Microchip: FC-9281-XX</p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="pet-profile.html" class="btn">View Profile</a>
+            <a href="microchip-registration.html" class="btn ghost">Microchip</a>
+            <button class="btn">Edit</button>
+          </div>
+        </div>
+        <div class="tile" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;">
+          <div>
+            <div style="font-weight: 800; font-size: 16px;">Luna</div>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Cat · Domestic Shorthair · 2 years</p>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Allergies: None</p>
+            <p class="muted" style="margin: 4px 0; font-size: 13px;">Microchip: Not registered</p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="pet-profile.html" class="btn">View Profile</a>
+            <a href="microchip-registration.html" class="btn ghost">Register Chip</a>
+            <button class="btn">Edit</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="add" class="card mt-3" style="border-style: dashed;">
+        <h2 class="page-title" style="font-size: 18px;">Add New Pet</h2>
+        <p class="page-subtitle" style="margin-bottom: 16px;">Create a pet profile with species, breed, age, and allergies</p>
+        <form>
+          <div class="form-row">
+            <div class="form-group"><label>Pet name</label><input type="text" placeholder="e.g. Max" /></div>
+            <div class="form-group"><label>Species</label><select><option>Dog</option><option>Cat</option><option>Other</option></select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Breed</label><input type="text" placeholder="e.g. Golden Retriever" /></div>
+            <div class="form-group"><label>Age (years)</label><input type="number" min="0" placeholder="4" /></div>
+          </div>
+          <div class="form-group">
+            <label>Allergies (comma-separated)</label>
+            <input type="text" placeholder="e.g. Chicken, grain" />
+          </div>
+          <button type="submit" class="btn">Add Pet</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

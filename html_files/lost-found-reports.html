@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lost & Found Reports - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="manager-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="manager-dashboard.html">Dashboard</a>
+          <a href="inventory.html">Inventory</a>
+          <a href="vaccination-compliance.html">Vaccination</a>
+          <a href="lost-found-reports.html" class="active">Lost/Found</a>
+          <a href="login.html">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="card">
+      <h1 class="page-title">Lost & found reports</h1>
+      <p class="page-subtitle">Create found reports when microchip is scanned at a branch. Cross-branch lookup for reunification.</p>
+
+      <div class="card" style="margin-bottom: 24px; border-style: dashed;">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Create found report</h2>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13px;">Record when a microchip is scanned at a branch. System queries registry for pet/owner and supports reunification.</p>
+        <form>
+          <div class="form-row">
+            <div class="form-group"><label>Reporting branch</label><select><option>Downtown</option><option>Northside</option></select></div>
+            <div class="form-group"><label>Found date</label><input type="date" /></div>
+          </div>
+          <div class="form-group">
+            <label>Scanned chip ID</label>
+            <input type="text" placeholder="e.g. FC-9281-XX" required />
+          </div>
+          <div class="form-group">
+            <label>Found location</label>
+            <input type="text" placeholder="Where the pet was found" />
+          </div>
+          <div class="form-group">
+            <label>Details</label>
+            <textarea placeholder="Description, condition, etc."></textarea>
+          </div>
+          <button type="submit" class="btn">Create found report</button>
+        </form>
+      </div>
+
+      <h2 style="font-size: 16px; margin: 0 0 12px;">All reports</h2>
+      <div class="form-row">
+        <div class="form-group" style="max-width: 200px;"><label>Type</label><select><option>All</option><option>Lost</option><option>Found</option></select></div>
+        <div class="form-group" style="max-width: 200px;"><label>Branch</label><select><option>All</option><option>Downtown</option><option>Northside</option></select></div>
+        <div class="form-group" style="max-width: 200px;"><label>Status</label><select><option>All</option><option>Open</option><option>Matched</option></select></div>
+      </div>
+
+      <div class="table-wrap mt-2">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Pet / Chip ID</th><th>Date</th><th>Location</th><th>Branch</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lost</td><td>Buddy (FC-9281-XX)</td><td>Mar 15</td><td>City Park</td><td>—</td>
+              <td><span class="pill wait">Open</span></td>
+            </tr>
+            <tr>
+              <td>Found</td><td>FC-1234-YY</td><td>Mar 16</td><td>Northside area</td><td>Northside</td>
+              <td><span class="pill ok">Matched</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

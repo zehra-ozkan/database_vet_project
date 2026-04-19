@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pet Owner Dashboard</title>
+  <style>
+    :root{
+      --bg:#070b14; --text:#eaf0ff; --muted:rgba(234,240,255,.70);
+      --line:rgba(255,255,255,.10); --panel:rgba(255,255,255,.05);
+      --primary:#7dd3fc; --radius:18px; --shadow: 0 16px 50px rgba(0,0,0,.30);
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--font); color:var(--text);
+      background: radial-gradient(900px 500px at 30% 0%, rgba(125,211,252,.16), transparent),
+                  radial-gradient(700px 420px at 90% 30%, rgba(34,197,94,.10), transparent),
+                  var(--bg);
+    }
+    .container{max-width:1000px; margin:0 auto; padding:18px}
+    .top{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:10px 0 18px;
+    }
+    .top .title{display:flex; gap:12px; align-items:center}
+    .dot{
+      width:12px; height:12px; border-radius:50%;
+      background: var(--primary);
+      box-shadow: 0 0 0 6px rgba(125,211,252,.15);
+    }
+    .btn{
+      padding:10px 14px; border-radius:14px; border:1px solid var(--line);
+      background:rgba(255,255,255,.03); color:var(--text);
+    }
+    .btn.primary{
+      border-color:rgba(125,211,252,.35);
+      background: linear-gradient(135deg, rgba(125,211,252,.22), rgba(59,130,246,.10));
+    }
+    .card{
+      background:var(--panel); border:1px solid var(--line);
+      border-radius:var(--radius); box-shadow: var(--shadow);
+      padding:16px;
+    }
+    .grid{
+      display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;
+    }
+    .timeline{
+      display:grid; gap:10px; margin-top:12px;
+    }
+    .event{
+      padding:12px; border:1px solid var(--line); border-radius:16px;
+      background:rgba(0,0,0,.15);
+      display:grid; grid-template-columns: 14px 1fr; gap:12px;
+      align-items:start;
+    }
+    .bar{
+      width:14px; height:14px; border-radius:6px; margin-top:4px;
+      background:rgba(125,211,252,.9);
+      box-shadow: 0 0 0 6px rgba(125,211,252,.10);
+    }
+    .event h3{margin:0; font-size:14px}
+    .event p{margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.45}
+    .small-grid{
+      display:grid; gap:12px; align-content:start;
+    }
+    .stat{
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(0,0,0,.12);
+      margin-top:10px;
+    }
+    .stat .num{font-size:24px; font-weight:900}
+    .stat .lab{color:var(--muted); font-size:13px}
+    .pill{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted); font-size:12px;
+    }
+    @media (max-width: 900px){
+      .grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top">
+      <div class="title">
+        <span class="dot"></span>
+        <div>
+          <div style="font-weight:900">VetChain</div>
+          <div style="color:var(--muted); font-size:12px">Pet Owner Dashboard</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end">
+        <button class="btn" type="button">My Pets</button>
+        <button class="btn primary" type="button">Book Appointment</button>
+        <button class="btn" type="button">Logout</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:900">Medical Timeline</div>
+      <div style="color:var(--muted); font-size:13px; margin-top:6px">
+        A single timeline for diagnoses, medications, vaccinations, and referrals.
+      </div>
+
+      <div class="timeline">
+        <div class="event">
+          <div class="bar"></div>
+          <div>
+            <h3>Mar 10 - Allergy flare-up</h3>
+            <p>Symptoms: itching, sneezing. Treatment: antihistamine + follow-up.</p>
+          </div>
+        </div>
+        <div class="event">
+          <div class="bar"></div>
+          <div>
+            <h3>Feb 04 - Dental check</h3>
+            <p>Notes: routine cleaning. Prescription: dental care supplement.</p>
+          </div>
+        </div>
+        <div class="event">
+          <div class="bar"></div>
+          <div>
+            <h3>Jan 18 - Vaccination</h3>
+            <p>Vaccine: Distemper. Status: completed. Next due in 6 months.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div style="font-weight:900">Next Appointment</div>
+        <div style="color:var(--muted); font-size:13px; margin-top:6px">Confirmed slot and quick details</div>
+
+        <div class="stat">
+          <div>
+            <div class="lab">Date</div>
+            <div style="font-weight:900; margin-top:6px">Mar 20</div>
+          </div>
+          <div>
+            <div class="lab">Time</div>
+            <div style="font-weight:900; margin-top:6px">10:30</div>
+          </div>
+          <div>
+            <div class="lab">Status</div>
+            <div style="margin-top:6px"><span class="pill">Confirmed</span></div>
+          </div>
+        </div>
+
+        <div class="stat">
+          <div>
+            <div class="lab">Veterinarian</div>
+            <div style="font-weight:900; margin-top:6px">Dr. Kim</div>
+          </div>
+          <div>
+            <div class="lab">Branch</div>
+            <div style="font-weight:900; margin-top:6px">Downtown</div>
+          </div>
+          <div>
+            <div class="lab">Actions</div>
+            <div style="margin-top:6px"><button class="btn" type="button">View Pet History</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="small-grid">
+        <div class="card">
+          <div style="font-weight:900">Microchip & Lost/Found</div>
+          <div class="muted" style="margin-top:6px; font-size:13px">Quick entry and status</div>
+
+          <div class="stat">
+            <div>
+              <div class="lab">Chip ID</div>
+              <div style="font-weight:900; margin-top:6px">FC-9281-XX</div>
+            </div>
+            <div>
+              <div class="lab">Reports</div>
+              <div style="font-weight:900; margin-top:6px">0</div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+            <button class="btn primary" type="button">Create Lost Report</button>
+            <button class="btn" type="button">Update Found Report</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:900">Inventory Alerts (From Prescriptions)</div>
+          <div class="muted" style="margin-top:6px; font-size:13px">Simple placeholder for chain stock logic</div>
+
+          <div style="margin-top:12px; display:grid; gap:10px">
+            <div style="padding:12px; border:1px solid var(--line); border-radius:16px; background:rgba(0,0,0,.12)">
+              <div style="font-weight:800">Antihistamine</div>
+              <div class="muted" style="font-size:13px; margin-top:4px">Stock low at Downtown branch</div>
+              <div style="margin-top:10px"><span class="pill">Check refill options</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

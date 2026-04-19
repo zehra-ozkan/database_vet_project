@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Veterinarian Dashboard - VetChain</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header-split">
+      <div class="header-left">
+        <a href="vet-dashboard.html" class="brand brand-icon" aria-label="VetChain home">
+          <div class="mark"></div>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="nav nav-right">
+          <a href="vet-dashboard.html" class="active">Dashboard</a>
+          <a href="vet-appointments.html">Appointments</a>
+          <a href="medical-timeline.html">Timeline</a>
+        </nav>
+        <div class="header-actions">
+          <details class="profile-dropdown">
+            <summary class="profile-trigger">DK</summary>
+            <div class="profile-menu">
+              <a href="vet-dashboard.html#profile">My Profile</a>
+              <a href="login.html">Logout</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="card">
+        <h1>Welcome, Dr. Kim</h1>
+        <p class="sub">Document visits, prescriptions, and referrals. View pet medical history and manage inventory-linked prescriptions.</p>
+        <div class="kpi-row mt-2">
+          <div class="kpi">
+            <div class="label">Today's appointments</div>
+            <div class="value">4</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Pending documentation</div>
+            <div class="value">1</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="font-size: 16px; margin: 0 0 12px;">Quick actions</h2>
+        <a href="vet-appointments.html" class="btn block mt-1">Open appointments</a>
+        <a href="open-appointment.html" class="btn ghost block mt-1">Create visit record</a>
+        <a href="referral-create.html" class="btn ghost block mt-1">Create referral</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Today's schedule</h2>
+      <p class="page-subtitle">Downtown Clinic</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Pet</th><th>Owner</th><th>Status</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>09:00</td><td>Max</td><td>Sarah L.</td>
+              <td><span class="pill ok">Completed</span></td>
+              <td><a href="visit-summary.html">View</a></td>
+            </tr>
+            <tr>
+              <td>10:30</td><td>Buddy</td><td>Alex J.</td>
+              <td><span class="pill wait">Upcoming</span></td>
+              <td><a href="open-appointment.html">Open</a></td>
+            </tr>
+            <tr>
+              <td>14:00</td><td>Whiskers</td><td>Mike R.</td>
+              <td><span class="pill wait">Upcoming</span></td>
+              <td><a href="open-appointment.html">Open</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="page-title">Vaccination Plan & Records</h2>
+      <p class="page-subtitle">Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights</p>
+      <div class="panels" style="grid-template-columns: 1fr 1fr; margin-top: 12px;">
+        <div class="tile">
+          <div style="font-weight: 700;">Plan owner</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Dr. Kim · Downtown Clinic</p>
+        </div>
+        <div class="tile">
+          <div style="font-weight: 700;">Current plan</div>
+          <p class="muted" style="margin: 4px 0; font-size: 13px;">Rabies, Distemper, FVRCP</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr><th>Pet</th><th>Vaccine</th><th>Date</th><th>Batch</th><th>Next due</th><th>Admin vet</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Buddy</td><td>Rabies</td><td>Jan 08</td><td>RB-2219</td><td>Feb 15</td><td>Dr. Kim</td>
+              <td><span class="pill danger">Overdue 42d</span></td>
+            </tr>
+            <tr>
+              <td>Whiskers</td><td>FVRCP</td><td>Jan 22</td><td>FV-8841</td><td>Feb 16</td><td>Dr. Chen</td>
+              <td><span class="pill danger">Overdue 35d</span></td>
+            </tr>
+            <tr>
+              <td>Luna</td><td>Distemper</td><td>Feb 05</td><td>DS-1132</td><td>Mar 06</td><td>Dr. Kim</td>
+              <td><span class="pill danger">Overdue 31d</span></td>
+            </tr>
+            <tr>
+              <td>Max</td><td>Rabies</td><td>Mar 10</td><td>RB-2490</td><td>Apr 10</td><td>Dr. Patel</td>
+              <td><span class="pill wait">Due in 12d</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
