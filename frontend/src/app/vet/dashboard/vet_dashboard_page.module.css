@@ -1,0 +1,428 @@
+:root {
+  --vet-bg: #f6f8ff;
+  --vet-text: #0f172a;
+  --vet-muted: rgba(15, 23, 42, 0.68);
+  --vet-line: rgba(15, 23, 42, 0.12);
+  --vet-panel: rgba(255, 255, 255, 0.76);
+  --vet-radius: 18px;
+  --vet-primary: #6d28d9;
+  --vet-shadow: 0 16px 45px rgba(15, 23, 42, 0.1);
+}
+
+.page {
+  min-height: 100vh;
+  color: var(--vet-text);
+  background:
+    radial-gradient(1000px 540px at 15% 0%, rgba(109, 40, 217, 0.18), transparent),
+    radial-gradient(760px 460px at 95% 10%, rgba(34, 197, 94, 0.14), transparent),
+    radial-gradient(680px 420px at 70% 95%, rgba(249, 115, 22, 0.1), transparent),
+    var(--vet-bg);
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.headerSplit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 18px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--vet-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.brandIcon {
+  text-decoration: none;
+}
+
+.mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.95), rgba(34, 197, 94, 0.55));
+  box-shadow: 0 12px 30px rgba(167, 139, 250, 0.16);
+}
+
+.nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.navRight {
+  justify-content: flex-end;
+}
+
+.nav a {
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--vet-line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--vet-text);
+  font-size: 14px;
+}
+
+.active {
+  border-color: rgba(109, 40, 217, 0.3);
+  background: rgba(109, 40, 217, 0.1);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+}
+
+.profileDropdown {
+  position: relative;
+}
+
+.profileTrigger {
+  list-style: none;
+  cursor: pointer;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--vet-line);
+  background: rgba(255, 255, 255, 0.9);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--vet-text);
+}
+
+.profileTrigger::-webkit-details-marker {
+  display: none;
+}
+
+.profileMenu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 150px;
+  border: 1px solid var(--vet-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--vet-shadow);
+  overflow: hidden;
+  z-index: 2;
+}
+
+.profileMenu a {
+  display: block;
+  padding: 10px 12px;
+  color: var(--vet-text);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 14px;
+}
+
+.profileMenu a:last-child {
+  border-bottom: 0;
+}
+
+.profileDropdown[open] .profileMenu {
+  display: block;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card {
+  background: var(--vet-panel);
+  border: 1px solid var(--vet-line);
+  border-radius: var(--vet-radius);
+  box-shadow: var(--vet-shadow);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.sub {
+  margin-top: 6px;
+  color: var(--vet-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.label {
+  color: var(--vet-muted);
+  font-size: 13px;
+}
+
+.value {
+  font-size: 26px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+.quickActionsTitle {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+.btn {
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(109, 40, 217, 0.35);
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.14), rgba(59, 130, 246, 0.08));
+  color: var(--vet-text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.ghost {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.block {
+  display: block;
+  width: 100%;
+}
+
+.mt1 {
+  margin-top: 8px;
+}
+
+.mt2 {
+  margin-top: 12px;
+}
+
+.pageTitle {
+  font-size: 20px;
+  margin: 0;
+}
+
+.pageSubtitle {
+  margin: 4px 0 0;
+  color: var(--vet-muted);
+  font-size: 13px;
+}
+
+.tableWrap {
+  margin-top: 12px;
+  border: 1px solid var(--vet-line);
+  border-radius: 16px;
+  overflow: auto;
+  background: rgba(2, 6, 23, 0.02);
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: 11px 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tableWrap th {
+  color: var(--vet-muted);
+  font-size: 12px;
+}
+
+.tableWrap td a {
+  color: var(--vet-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.emptyCell {
+  text-align: center;
+  color: var(--vet-muted);
+}
+
+.pill {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vet-line);
+  color: var(--vet-muted);
+  font-size: 12px;
+}
+
+.pillOk {
+  border-color: rgba(52, 211, 153, 0.35);
+  color: rgba(5, 150, 105, 0.95);
+}
+
+.pillWait {
+  border-color: rgba(251, 191, 36, 0.35);
+  color: rgba(217, 119, 6, 0.95);
+}
+
+.pillDanger {
+  border-color: rgba(251, 113, 133, 0.4);
+  color: rgba(225, 29, 72, 0.95);
+}
+
+.pillInfo {
+  border-color: rgba(167, 139, 250, 0.4);
+  color: rgba(109, 40, 217, 0.95);
+}
+
+.vaccinationMetaPanels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tile {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.tileTitle {
+  font-weight: 700;
+}
+
+.tileSub {
+  margin: 4px 0;
+  color: var(--vet-muted);
+  font-size: 13px;
+}
+
+.errorText {
+  margin-top: 12px;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.formRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.formLabel {
+  font-size: 13px;
+  color: var(--vet-muted);
+  font-weight: 600;
+}
+
+.inputControl {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--vet-line);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--vet-text);
+  font-size: 14px;
+}
+
+.tileStack {
+  display: grid;
+  gap: 12px;
+}
+
+.eventCard {
+  padding: 12px;
+  border: 1px solid var(--vet-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.eventHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.eventTitle {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.mutedSmall {
+  margin: 0;
+  color: var(--vet-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 960px) {
+  .headerSplit {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiRow {
+    grid-template-columns: 1fr;
+  }
+
+  .vaccinationMetaPanels {
+    grid-template-columns: 1fr;
+  }
+}
