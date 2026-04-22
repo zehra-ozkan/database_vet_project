@@ -10,6 +10,7 @@ def get_db_connection():
     conn = psycopg2.connect(DB_URL)
     return conn
 
+
 @general_bp.route('/api/login', methods=['POST'])
 def login():
     """Authenticate a user using their email and password."""
@@ -30,7 +31,22 @@ def login():
         
         # Query the Users table for a matching email and plaintext password
         # TODO: CHANGE TO THE FILE
-        cur.execute('SELECT userID, name, email FROM Users WHERE email = %s AND password = %s', (email, password))
+        cur.execute(''' SELECT
+            u.userID,
+            u.name,
+            u.email,
+            CASE
+            WHEN po.ownerID IS NOT NULL THEN 'PetOwner'
+            WHEN v.veterinarianID IS NOT NULL THEN 'Veterinarian'
+            WHEN cm.managerID IS NOT NULL THEN 'ClinicManager'
+            ELSE 'Unknown'
+            END AS userRole
+            FROM Users u
+            LEFT JOIN PetOwner po ON po.ownerID = u.userID
+            LEFT JOIN Veterinarian v ON v.veterinarianID = u.userID
+            LEFT JOIN ClinicManager cm ON cm.managerID = u.userID
+            WHERE u.email = %s AND u.password = %s
+            ''', (email, password))
         user = cur.fetchone()
         
         cur.close()
@@ -50,6 +66,7 @@ def login():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @general_bp.route('/api/register', methods=['POST'])
 def register():
@@ -81,7 +98,19 @@ def register():
             (name, email, password, phone)
         )
         user_id = cur.fetchone()[0]
+
+        cur.execute(''' SELECT userID
+            FROM Users
+            WHERE email = %s AND phoneNumber = %s 
+            ''', (email, phone))
+        user_id = cur.fetchone()[0]
+
+        if user_id is not None:
+            return jsonify({"error": "Please use a different email or phone number"}), 409
         
+        cur.execute(''' INSERT INTO Users (name, email, password, phoneNumber) VALUES (%s, %s, %s, %s) RETURNING userID''', (name, email, password, phone))
+        
+        user_id = cur.fetchone()[0]
         # Insert into role-specific table
         if role == 'owner':
             cur.execute('INSERT INTO PetOwner (ownerID) VALUES (%s)', (user_id,))
@@ -89,6 +118,8 @@ def register():
             cur.execute('INSERT INTO Veterinarian (veterinarianID) VALUES (%s)', (user_id,))
         elif role == 'manager':
             cur.execute('INSERT INTO ClinicManager (managerID) VALUES (%s)', (user_id,))
+
+        
             
         conn.commit()
         cur.close()
