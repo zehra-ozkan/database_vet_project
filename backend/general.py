@@ -58,7 +58,8 @@ def login():
                 "user": {
                     "id": user[0],
                     "name": user[1],
-                    "email": user[2]
+                    "email": user[2],
+                    "role": user[3]
                 }
             }), 200
         else:
