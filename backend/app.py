@@ -5,10 +5,14 @@ from flask_cors import CORS
 from vet.vet_dashboard_api import vet_dashboard_bp
 from vet.vet_appointments_api import vet_appointments_bp
 from vet.vet_timeline_api import vet_timeline_bp
+from general import general_bp
 
 app = Flask(__name__)
 # Enable CORS so the Next.js frontend can communicate with Flask
 CORS(app)
+
+# Register the blueprint
+app.register_blueprint(general_bp)
 
 # Fetch the database connection string from the environment variables
 DB_URL = os.environ.get("DATABASE_URL")
