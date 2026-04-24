@@ -11,7 +11,7 @@ CREATE TABLE Users (
     name VARCHAR(100) NOT NULL,
     password VARCHAR(255) NOT NULL,
     phoneNumber VARCHAR(20) UNIQUE NOT NULL,
-    email VARCHAR(20) UNIQUE NOT NULL
+    email VARCHAR(50) UNIQUE NOT NULL
 );
 
 
