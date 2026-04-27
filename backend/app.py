@@ -4,6 +4,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from general import general_bp
 from manager import manager_bp
+from owner import owner_bp
 
 app = Flask(__name__)
 # Enable CORS so the Next.js frontend can communicate with Flask
@@ -12,6 +13,7 @@ CORS(app)
 # Register the blueprint
 app.register_blueprint(general_bp)
 app.register_blueprint(manager_bp)
+app.register_blueprint(owner_bp)
 
 # Fetch the database connection string from the environment variables
 DB_URL = os.environ.get("DATABASE_URL")

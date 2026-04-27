@@ -3,9 +3,6 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -23,4 +20,280 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Pet owner page styling scoped to avoid leaking into the rest of the app. */
+.pet-owner {
+  --bg: #f6f8ff;
+  --text: #0f172a;
+  --muted: rgba(15, 23, 42, 0.68);
+  --line: rgba(15, 23, 42, 0.12);
+  --panel: rgba(255, 255, 255, 0.76);
+  --radius: 18px;
+  --primary: #6d28d9;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #e11d48;
+  --shadow: 0 16px 45px rgba(15, 23, 42, 0.1);
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font);
+  background:
+    radial-gradient(1000px 540px at 15% 0%, rgba(109, 40, 217, 0.18), transparent),
+    radial-gradient(760px 460px at 95% 10%, rgba(34, 197, 94, 0.14), transparent),
+    radial-gradient(680px 420px at 70% 95%, rgba(249, 115, 22, 0.1), transparent),
+    var(--bg);
+  line-height: 1.5;
+}
+
+.pet-owner *,
+.pet-owner *::before,
+.pet-owner *::after {
+  box-sizing: border-box;
+}
+
+.pet-owner a {
+  color: inherit;
+  text-decoration: none;
+}
+.pet-owner a:hover {
+  opacity: 0.85;
+}
+
+.pet-owner .container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.pet-owner .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.pet-owner .brand.brand-icon {
+  padding: 8px;
+  gap: 0;
+}
+.pet-owner .brand .mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.95), rgba(5, 150, 105, 0.55));
+  box-shadow: 0 12px 30px rgba(109, 40, 217, 0.16);
+}
+
+.pet-owner header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 0 24px;
+}
+.pet-owner .header-right {
+  justify-content: flex-end;
+}
+.pet-owner .header-split {
+  justify-content: space-between;
+}
+.pet-owner .nav.nav-right {
+  justify-content: flex-end;
+}
+
+.pet-owner .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pet-owner .header-actions,
+.pet-owner .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pet-owner .profile-dropdown {
+  position: relative;
+}
+.pet-owner .profile-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.85), rgba(5, 150, 105, 0.6));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow);
+}
+.pet-owner .profile-trigger::-webkit-details-marker {
+  display: none;
+}
+.pet-owner .profile-dropdown[open] .profile-trigger {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.pet-owner .profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  z-index: 100;
+}
+.pet-owner .profile-menu a,
+.pet-owner .profile-menu button {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+.pet-owner .profile-menu a:hover,
+.pet-owner .profile-menu button:hover {
+  background: rgba(109, 40, 217, 0.08);
+}
+
+.pet-owner .nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pet-owner .nav a {
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.pet-owner .btn {
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(109, 40, 217, 0.35);
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.14), rgba(59, 130, 246, 0.08));
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+}
+.pet-owner .btn:hover {
+  opacity: 0.9;
+}
+.pet-owner .btn.ghost {
+  background: transparent;
+  border-color: var(--line);
+}
+
+.pet-owner .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.pet-owner .page-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.pet-owner .page-subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.pet-owner .panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.pet-owner .tile {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  margin-bottom: 10px;
+}
+.pet-owner .tile:last-child {
+  margin-bottom: 0;
+}
+
+.pet-owner .form-group {
+  margin-bottom: 16px;
+}
+.pet-owner .form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.pet-owner .form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.pet-owner .form-row .form-group {
+  flex: 1;
+  min-width: 180px;
+}
+
+.pet-owner select,
+.pet-owner input,
+.pet-owner textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.pet-owner .muted {
+  color: var(--muted);
+}
+.pet-owner .mt-3 {
+  margin-top: 24px;
+}
+
+@media (max-width: 960px) {
+  .pet-owner .panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .pet-owner header {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

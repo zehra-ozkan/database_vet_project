@@ -152,9 +152,9 @@ export default function Register() {
               className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all shadow-sm outline-none appearance-none cursor-pointer"
             >
               <option value="" disabled>Select your role</option>
-              <option value="owner">Pet Owner</option>
-              <option value="vet">Veterinarian</option>
-              <option value="manager">Manager / Admin</option>
+              <option value="PetOwner">Pet Owner</option>
+              <option value="Veterinarian">Veterinarian</option>
+              <option value="ClinicManager">Manager / Admin</option>
             </select>
           </div>
 
