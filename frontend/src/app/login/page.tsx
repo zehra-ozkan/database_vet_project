@@ -34,6 +34,7 @@ export default function Login() {
 
       // Login successful, optionally save user to localStorage
       localStorage.setItem("user", JSON.stringify(data.user));
+      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(data.user))}; path=/; max-age=604800; samesite=lax`;
 
       // Only clinic managers get the new manager section; all other roles keep the current generic page.
       if (data.user?.role === "ClinicManager") {

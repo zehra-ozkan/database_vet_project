@@ -33,6 +33,7 @@ export default function Sidebar() {
 
   const handleLogout = () => {
     localStorage.removeItem("user");
+    document.cookie = "session_user=; path=/; max-age=0; samesite=lax";
     router.push("/login");
   };
 

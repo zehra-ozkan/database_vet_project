@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import styles from "./vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
+import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, type VetSearchValue } from "../vet_http";
 
 type VetDashboardProfile = {
   veterinarian_name: string;
@@ -42,7 +43,6 @@ type VetDashboardResponse = {
 
 type VetDashboardPageProps = {
   searchParams?: Promise<{
-    vetId?: VetSearchValue;
     date?: VetSearchValue;
   }>;
 };
@@ -125,12 +125,16 @@ async function fetchVetDashboardData(
 }
 
 export default async function VetDashboardPage({ searchParams }: VetDashboardPageProps) {
+  const selectedVetId = await vetGetLoggedInVetId();
+  if (!selectedVetId) {
+    redirect("/home");
+  }
+
   const resolvedSearchParams = (await searchParams) ?? {};
-  const selectedVetId = vetParsePositiveInt(vetGetSearchValue(resolvedSearchParams.vetId), 1);
   const selectedDate = vetGetSearchValue(resolvedSearchParams.date);
-  const dashboardHref = `/vet/dashboard?vetId=${selectedVetId}`;
-  const appointmentsHref = `/vet/appointments?vetId=${selectedVetId}`;
-  const timelineHref = `/vet/timeline?vetId=${selectedVetId}`;
+  const dashboardHref = "/vet/dashboard";
+  const appointmentsHref = "/vet/appointments";
+  const timelineHref = "/vet/timeline";
 
   const { data, error } = await fetchVetDashboardData(selectedVetId, selectedDate);
 

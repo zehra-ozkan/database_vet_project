@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
+import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
 
 type VetAppointmentsProfile = {
   veterinarian_name: string;
@@ -35,7 +36,6 @@ type VetAppointmentsResponse = {
 
 type VetAppointmentsPageProps = {
   searchParams?: Promise<{
-    vetId?: VetSearchValue;
     date?: VetSearchValue;
     branchId?: VetSearchValue;
   }>;
@@ -89,16 +89,20 @@ async function fetchVetAppointments(
 }
 
 export default async function VetAppointmentsPage({ searchParams }: VetAppointmentsPageProps) {
+  const selectedVetId = await vetGetLoggedInVetId();
+  if (!selectedVetId) {
+    redirect("/home");
+  }
+
   const resolvedSearchParams = (await searchParams) ?? {};
-  const selectedVetId = vetParsePositiveInt(vetGetSearchValue(resolvedSearchParams.vetId), 1);
   const selectedDate = vetGetSearchValue(resolvedSearchParams.date);
   const selectedBranchIdRaw = vetGetSearchValue(resolvedSearchParams.branchId);
   const selectedBranchId = selectedBranchIdRaw
     ? vetParsePositiveInt(selectedBranchIdRaw, 0) || null
     : null;
 
-  const dashboardHref = `/vet/dashboard?vetId=${selectedVetId}`;
-  const timelineHref = `/vet/timeline?vetId=${selectedVetId}`;
+  const dashboardHref = "/vet/dashboard";
+  const timelineHref = "/vet/timeline";
 
   const { data, error } = await fetchVetAppointments(selectedVetId, selectedDate, selectedBranchId);
 
@@ -135,7 +139,7 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
           <div className={styles.headerRight}>
             <nav className={`${styles.nav} ${styles.navRight}`}>
               <Link href={dashboardHref}>Dashboard</Link>
-              <Link href={`/vet/appointments?vetId=${selectedVetId}`} className={styles.active}>
+              <Link href="/vet/appointments" className={styles.active}>
                 Appointments
               </Link>
               <Link href={timelineHref}>Timeline</Link>
@@ -159,7 +163,6 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
           </p>
 
           <form method="get" className={styles.formRow}>
-            <input type="hidden" name="vetId" value={selectedVetId} />
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>Branch</label>
               <select

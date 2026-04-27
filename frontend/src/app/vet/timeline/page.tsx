@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
+import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
 
 type VetTimelinePet = {
   petid: number;
@@ -74,7 +75,6 @@ type VetTimelineResponse = {
 
 type VetTimelinePageProps = {
   searchParams?: Promise<{
-    vetId?: VetSearchValue;
     petId?: VetSearchValue;
   }>;
 };
@@ -170,13 +170,17 @@ async function fetchVetTimelineData(
 }
 
 export default async function VetTimelinePage({ searchParams }: VetTimelinePageProps) {
+  const selectedVetId = await vetGetLoggedInVetId();
+  if (!selectedVetId) {
+    redirect("/home");
+  }
+
   const resolvedSearchParams = (await searchParams) ?? {};
-  const selectedVetId = vetParsePositiveInt(vetGetSearchValue(resolvedSearchParams.vetId), 1);
   const requestedPetIdRaw = vetGetSearchValue(resolvedSearchParams.petId);
   const requestedPetId = requestedPetIdRaw ? vetParsePositiveInt(requestedPetIdRaw, 0) || null : null;
 
-  const dashboardHref = `/vet/dashboard?vetId=${selectedVetId}`;
-  const appointmentsHref = `/vet/appointments?vetId=${selectedVetId}`;
+  const dashboardHref = "/vet/dashboard";
+  const appointmentsHref = "/vet/appointments";
 
   const { data, error } = await fetchVetTimelineData(selectedVetId, requestedPetId);
 
@@ -220,7 +224,7 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
             <nav className={`${styles.nav} ${styles.navRight}`}>
               <Link href={dashboardHref}>Dashboard</Link>
               <Link href={appointmentsHref}>Appointments</Link>
-              <Link href={`/vet/timeline?vetId=${selectedVetId}`} className={styles.active}>
+              <Link href="/vet/timeline" className={styles.active}>
                 Timeline
               </Link>
             </nav>
@@ -243,7 +247,6 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
           </p>
 
           <form method="get" className={styles.formRow}>
-            <input type="hidden" name="vetId" value={selectedVetId} />
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>Pet</label>
               <select

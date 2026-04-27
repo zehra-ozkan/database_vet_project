@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 export type VetSearchValue = string | string[] | undefined;
 
 export function vetGetSearchValue(value: VetSearchValue): string | undefined {
@@ -58,4 +60,34 @@ export async function vetFetchJson<T>(
   }
 
   return { data: null, error: lastError };
+}
+
+export async function vetGetLoggedInVetId(): Promise<number | null> {
+  const cookieStore = await cookies();
+  const rawSession = cookieStore.get("session_user")?.value;
+  if (!rawSession) {
+    return null;
+  }
+
+  try {
+    const decodedSession = decodeURIComponent(rawSession);
+    const parsedUser = JSON.parse(decodedSession) as { id?: unknown; role?: unknown };
+    const normalizedRole =
+      typeof parsedUser.role === "string" ? parsedUser.role.trim().toLowerCase() : "";
+
+    if (normalizedRole !== "veterinarian" && normalizedRole !== "vet") {
+      return null;
+    }
+
+    const parsedId =
+      typeof parsedUser.id === "number" ? parsedUser.id : Number.parseInt(String(parsedUser.id), 10);
+
+    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+      return null;
+    }
+
+    return parsedId;
+  } catch {
+    return null;
+  }
 }

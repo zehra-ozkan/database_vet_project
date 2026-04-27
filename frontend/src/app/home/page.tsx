@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const [userName, setUserName] = useState("");
+  const [isVet, setIsVet] = useState(false);
+  const [vetId, setVetId] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -12,9 +14,20 @@ export default function HomePage() {
     const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
-        const user = JSON.parse(userStr);
+        const user = JSON.parse(userStr) as { id?: number | string; name?: string; role?: string };
+        document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
         setUserName(user.name || "User");
-      } catch (e) {
+        const normalizedRole = typeof user.role === "string" ? user.role.trim().toLowerCase() : "";
+        const userIsVet = normalizedRole === "veterinarian" || normalizedRole === "vet";
+        setIsVet(userIsVet);
+
+        if (userIsVet) {
+          const parsedVetId = typeof user.id === "number" ? user.id : Number(user.id);
+          setVetId(Number.isInteger(parsedVetId) && parsedVetId > 0 ? parsedVetId : null);
+        } else {
+          setVetId(null);
+        }
+      } catch {
         // If JSON parsing fails, redirect back to login
         router.push("/login");
       }
@@ -26,7 +39,15 @@ export default function HomePage() {
 
   const handleLogout = () => {
     localStorage.removeItem("user");
+    document.cookie = "session_user=; path=/; max-age=0; samesite=lax";
     router.push("/login");
+  };
+
+  const goToVetPage = (path: "appointments" | "timeline" | "dashboard") => {
+    if (!isVet || !vetId) {
+      return;
+    }
+    router.push(`/vet/${path}`);
   };
 
   // We can show a simple loading state until the client-side checks finish
@@ -77,28 +98,83 @@ export default function HomePage() {
 
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+            onClick={isVet ? () => goToVetPage("appointments") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("appointments");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <span className="text-xl">📅</span>
             </div>
             <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">View and manage your upcoming schedule.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "View your schedule and open appointments to create visit records."
+                : "View and manage your upcoming schedule."}
+            </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+            onClick={isVet ? () => goToVetPage("timeline") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("timeline");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <span className="text-xl">🐾</span>
             </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Patients</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Access medical records and history.</p>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Medical Records" : "Patients"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "Access pet history, diagnoses, prescriptions, vaccinations, and referrals."
+                : "Access medical records and history."}
+            </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+            onClick={isVet ? () => goToVetPage("dashboard") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("dashboard");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <span className="text-xl">📦</span>
+              <span className="text-xl">{isVet ? "💉" : "📦"}</span>
             </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Inventory</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Check stock and order supplies.</p>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Vaccinations" : "Inventory"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet ? "Review vaccination plans, due records, and follow-up items." : "Check stock and order supplies."}
+            </p>
           </div>
         </div>
 
