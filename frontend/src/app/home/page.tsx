@@ -1,10 +1,101 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import styles from "../vet/dashboard/vet_dashboard_page.module.css";
+
+type VetDashboardProfile = {
+  veterinarian_name: string;
+  branch_name: string | null;
+  branch_location: string | null;
+};
+
+type VetDashboardMetrics = {
+  todays_appointments: number;
+  pending_documentation: number;
+};
+
+type VetScheduleItem = {
+  appointmentid: number;
+  datetime: string;
+  pet_name: string;
+  owner_name: string;
+  status: "Completed" | "Upcoming" | "Pending";
+};
+
+type VetHomeDashboardResponse = {
+  profile: VetDashboardProfile;
+  metrics: VetDashboardMetrics;
+  today_schedule: VetScheduleItem[];
+};
+
+const vetDashboardApiBaseCandidates = Array.from(
+  new Set(
+    [process.env.NEXT_PUBLIC_API_URL, "http://localhost:5000/api"]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.replace(/\/$/, ""))
+  )
+);
+
+function withDoctorPrefix(name: string): string {
+  if (name.toLowerCase().startsWith("dr.")) {
+    return name;
+  }
+  return `Dr. ${name}`;
+}
+
+function formatClock(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "--:--";
+  }
+  return parsed.toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getSchedulePillClass(status: VetScheduleItem["status"]): string {
+  if (status === "Completed") {
+    return `${styles.pill} ${styles.pillOk}`;
+  }
+  if (status === "Upcoming") {
+    return `${styles.pill} ${styles.pillWait}`;
+  }
+  return `${styles.pill} ${styles.pillInfo}`;
+}
+
+async function fetchVetHomeDashboardData(
+  vetId: number
+): Promise<{ data: VetHomeDashboardResponse | null; error: string | null }> {
+  let lastError = "Data could not be loaded.";
+
+  for (const apiBase of vetDashboardApiBaseCandidates) {
+    try {
+      const response = await fetch(`${apiBase}/vet/dashboard?vetId=${vetId}`, { cache: "no-store" });
+      const payload = (await response.json()) as VetHomeDashboardResponse & { error?: unknown };
+      if (!response.ok) {
+        lastError = typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`;
+        continue;
+      }
+      return { data: payload, error: null };
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error.message;
+      }
+    }
+  }
+
+  return { data: null, error: lastError };
+}
 
 export default function HomePage() {
   const [userName, setUserName] = useState("");
+  const [isVet, setIsVet] = useState(false);
+  const [vetId, setVetId] = useState<number | null>(null);
+  const [vetDashboardData, setVetDashboardData] = useState<VetHomeDashboardResponse | null>(null);
+  const [vetDashboardError, setVetDashboardError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -12,9 +103,20 @@ export default function HomePage() {
     const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
-        const user = JSON.parse(userStr);
+        const user = JSON.parse(userStr) as { id?: number | string; name?: string; role?: string };
+        document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
         setUserName(user.name || "User");
-      } catch (e) {
+        const normalizedRole = typeof user.role === "string" ? user.role.trim().toLowerCase() : "";
+        const userIsVet = normalizedRole === "veterinarian" || normalizedRole === "vet";
+        setIsVet(userIsVet);
+
+        if (userIsVet) {
+          const parsedVetId = typeof user.id === "number" ? user.id : Number(user.id);
+          setVetId(Number.isInteger(parsedVetId) && parsedVetId > 0 ? parsedVetId : null);
+        } else {
+          setVetId(null);
+        }
+      } catch {
         // If JSON parsing fails, redirect back to login
         router.push("/login");
       }
@@ -24,9 +126,46 @@ export default function HomePage() {
     }
   }, [router]);
 
+  useEffect(() => {
+    if (!isVet || !vetId) {
+      setVetDashboardData(null);
+      setVetDashboardError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadVetDashboardData = async () => {
+      const { data, error } = await fetchVetHomeDashboardData(vetId);
+      if (cancelled) {
+        return;
+      }
+      setVetDashboardData(data);
+      setVetDashboardError(error);
+    };
+
+    void loadVetDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isVet, vetId]);
+
   const handleLogout = () => {
     localStorage.removeItem("user");
+    document.cookie = "session_user=; path=/; max-age=0; samesite=lax";
     router.push("/login");
+  };
+
+  const goToVetPage = (path: "appointments" | "timeline" | "dashboard") => {
+    if (!isVet || !vetId) {
+      return;
+    }
+    if (path === "dashboard") {
+      router.push("/vet/vaccinations");
+      return;
+    }
+    router.push(`/vet/${path}`);
   };
 
   // We can show a simple loading state until the client-side checks finish
@@ -41,6 +180,13 @@ export default function HomePage() {
       </div>
     );
   }
+
+  const vetName = withDoctorPrefix(vetDashboardData?.profile.veterinarian_name ?? userName);
+  const branchTitle = vetDashboardData?.profile.branch_name ?? "No branch assigned";
+  const branchSubtitle = vetDashboardData?.profile.branch_location ?? "Branch location not available";
+  const todaysAppointments = vetDashboardData?.metrics.todays_appointments ?? 0;
+  const pendingDocumentation = vetDashboardData?.metrics.pending_documentation ?? 0;
+  const todaySchedule = vetDashboardData?.today_schedule ?? [];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8 font-sans transition-colors duration-300">
@@ -75,32 +221,177 @@ export default function HomePage() {
           </button>
         </header>
 
+        {isVet ? (
+          <>
+            <section className={styles.hero}>
+              <div className={styles.card}>
+                <h1>Your day is ready, {vetName}</h1>
+                <p className={styles.sub}>
+                  Let's quickly check your appointments and notes, then jump into records and vaccinations.
+                </p>
+                <div className={`${styles.kpiRow} ${styles.mt2}`}>
+                  <div className={styles.kpi}>
+                    <div className={styles.label}>Today&apos;s appointments</div>
+                    <div className={styles.value}>{todaysAppointments}</div>
+                  </div>
+                  <div className={styles.kpi}>
+                    <div className={styles.label}>Pending documentation</div>
+                    <div className={styles.value}>{pendingDocumentation}</div>
+                  </div>
+                </div>
+                {vetDashboardError ? <p className={styles.errorText}>{vetDashboardError}</p> : null}
+              </div>
+              <div className={styles.card}>
+                <h2 className={styles.quickActionsTitle}>Quick actions</h2>
+                <Link href="/vet/appointments" className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
+                  Open appointments
+                </Link>
+                <a href="#" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                  Create visit record
+                </a>
+                <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                  Create referral
+                </Link>
+              </div>
+            </section>
+          </>
+        ) : null}
+
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-blue-300 dark:border-blue-700" : "border border-blue-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("appointments") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("appointments");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <span className="text-xl">📅</span>
             </div>
             <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">View and manage your upcoming schedule.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "View your schedule and open appointments to create visit records."
+                : "View and manage your upcoming schedule."}
+            </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-emerald-300 dark:border-emerald-700" : "border border-emerald-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("timeline") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("timeline");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <span className="text-xl">🐾</span>
             </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Patients</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Access medical records and history.</p>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Medical Records" : "Patients"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "Access pet history, diagnoses, prescriptions, vaccinations, and referrals."
+                : "Access medical records and history."}
+            </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-violet-300 dark:border-violet-700" : "border border-purple-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("dashboard") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("dashboard");
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <span className="text-xl">📦</span>
+              <span className="text-xl">{isVet ? "💉" : "📦"}</span>
             </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Inventory</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Check stock and order supplies.</p>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Vaccinations" : "Inventory"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet ? "Review vaccination plans, due records, and follow-up items." : "Check stock and order supplies."}
+            </p>
           </div>
         </div>
+
+        {isVet ? (
+          <section className={`${styles.card} ${styles.mt2}`}>
+            <h2 className={styles.pageTitle}>Today&apos;s schedule</h2>
+            <p className={styles.pageSubtitle}>{branchTitle}</p>
+            <p className={styles.pageSubtitle}>{branchSubtitle}</p>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Pet</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {todaySchedule.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className={styles.emptyCell}>
+                        No appointments found for the selected date.
+                      </td>
+                    </tr>
+                  ) : (
+                    todaySchedule.map((appointment) => (
+                      <tr key={appointment.appointmentid}>
+                        <td>{formatClock(appointment.datetime)}</td>
+                        <td>{appointment.pet_name}</td>
+                        <td>{appointment.owner_name}</td>
+                        <td>
+                          <span className={getSchedulePillClass(appointment.status)}>
+                            {appointment.status}
+                          </span>
+                        </td>
+                        <td>
+                          <Link href="/vet/appointments">
+                            {appointment.status === "Completed" ? "View" : "Open"}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
 
       </div>
     </div>

@@ -36,6 +36,7 @@ export default function Register() {
 
       // Registration successful, save user to localStorage
       localStorage.setItem("user", JSON.stringify(data.user));
+      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(data.user))}; path=/; max-age=604800; samesite=lax`;
       
       // Redirect to home dashboard
       router.push("/home");
