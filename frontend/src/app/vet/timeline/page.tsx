@@ -179,7 +179,8 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
   const requestedPetIdRaw = vetGetSearchValue(resolvedSearchParams.petId);
   const requestedPetId = requestedPetIdRaw ? vetParsePositiveInt(requestedPetIdRaw, 0) || null : null;
 
-  const dashboardHref = "/vet/dashboard";
+  const homeHref = "/home";
+  const vaccinationsHref = "/vet/dashboard";
   const appointmentsHref = "/vet/appointments";
 
   const { data, error } = await fetchVetTimelineData(selectedVetId, requestedPetId);
@@ -216,23 +217,23 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
       <div className={styles.container}>
         <header className={styles.headerSplit}>
           <div className={styles.headerLeft}>
-            <Link href={dashboardHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
+            <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
             </Link>
           </div>
           <div className={styles.headerRight}>
             <nav className={`${styles.nav} ${styles.navRight}`}>
-              <Link href={dashboardHref}>Dashboard</Link>
               <Link href={appointmentsHref}>Appointments</Link>
               <Link href="/vet/timeline" className={styles.active}>
-                Timeline
+                Medical Records
               </Link>
+              <Link href={vaccinationsHref}>Vaccinations</Link>
             </nav>
             <div className={styles.headerActions}>
               <details className={styles.profileDropdown}>
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
-                  <Link href={dashboardHref}>My Profile</Link>
+                  <Link href={homeHref}>My Profile</Link>
                   <a href="#">Logout</a>
                 </div>
               </details>

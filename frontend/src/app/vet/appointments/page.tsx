@@ -101,7 +101,8 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
     ? vetParsePositiveInt(selectedBranchIdRaw, 0) || null
     : null;
 
-  const dashboardHref = "/vet/dashboard";
+  const homeHref = "/home";
+  const vaccinationsHref = "/vet/dashboard";
   const timelineHref = "/vet/timeline";
 
   const { data, error } = await fetchVetAppointments(selectedVetId, selectedDate, selectedBranchId);
@@ -132,23 +133,23 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
       <div className={styles.container}>
         <header className={styles.headerSplit}>
           <div className={styles.headerLeft}>
-            <Link href={dashboardHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
+            <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
             </Link>
           </div>
           <div className={styles.headerRight}>
             <nav className={`${styles.nav} ${styles.navRight}`}>
-              <Link href={dashboardHref}>Dashboard</Link>
               <Link href="/vet/appointments" className={styles.active}>
                 Appointments
               </Link>
-              <Link href={timelineHref}>Timeline</Link>
+              <Link href={timelineHref}>Medical Records</Link>
+              <Link href={vaccinationsHref}>Vaccinations</Link>
             </nav>
             <div className={styles.headerActions}>
               <details className={styles.profileDropdown}>
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
-                  <Link href={dashboardHref}>My Profile</Link>
+                  <Link href={homeHref}>My Profile</Link>
                   <a href="#">Logout</a>
                 </div>
               </details>

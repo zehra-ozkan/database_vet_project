@@ -2,25 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import styles from "./vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, type VetSearchValue } from "../vet_http";
+import { vetFetchJson, vetGetLoggedInVetId } from "../vet_http";
 
-type VetDashboardProfile = {
+type VetVaccinationProfile = {
   veterinarian_name: string;
   branch_name: string | null;
-  branch_location: string | null;
-};
-
-type VetDashboardMetrics = {
-  todays_appointments: number;
-  pending_documentation: number;
-};
-
-type VetScheduleItem = {
-  appointmentid: number;
-  datetime: string;
-  pet_name: string;
-  owner_name: string;
-  status: "Completed" | "Upcoming" | "Pending";
 };
 
 type VetVaccinationItem = {
@@ -32,45 +18,10 @@ type VetVaccinationItem = {
   vaccination_status: string;
 };
 
-type VetDashboardResponse = {
-  vet_id: number;
-  selected_date: string;
-  profile: VetDashboardProfile;
-  metrics: VetDashboardMetrics;
-  today_schedule: VetScheduleItem[];
+type VetVaccinationDashboardResponse = {
+  profile: VetVaccinationProfile;
   vaccination_records: VetVaccinationItem[];
 };
-
-type VetDashboardPageProps = {
-  searchParams?: Promise<{
-    date?: VetSearchValue;
-  }>;
-};
-
-function formatClock(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "--:--";
-  }
-  return parsed.toLocaleTimeString("tr-TR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatShortDate(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "-";
-  }
-  return parsed.toLocaleDateString("tr-TR", {
-    day: "2-digit",
-    month: "short",
-  });
-}
 
 function withDoctorPrefix(name: string): string {
   if (name.toLowerCase().startsWith("dr.")) {
@@ -92,14 +43,18 @@ function getInitials(name: string): string {
   return initials.join("");
 }
 
-function getSchedulePillClass(status: VetScheduleItem["status"]): string {
-  if (status === "Completed") {
-    return `${styles.pill} ${styles.pillOk}`;
+function formatShortDate(value: string | null): string {
+  if (!value) {
+    return "-";
   }
-  if (status === "Upcoming") {
-    return `${styles.pill} ${styles.pillWait}`;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
   }
-  return `${styles.pill} ${styles.pillInfo}`;
+  return parsed.toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 function getVaccinationPillClass(status: string): string {
@@ -112,38 +67,31 @@ function getVaccinationPillClass(status: string): string {
   return `${styles.pill} ${styles.pillOk}`;
 }
 
-async function fetchVetDashboardData(
-  vetId: number,
-  selectedDate: string | undefined
-): Promise<{ data: VetDashboardResponse | null; error: string | null }> {
-  const queryParts = [`vetId=${vetId}`];
-  if (selectedDate) {
-    queryParts.push(`date=${encodeURIComponent(selectedDate)}`);
-  }
-  const endpoint = `/api/vet/dashboard?${queryParts.join("&")}`;
-  return vetFetchJson<VetDashboardResponse>(endpoint);
+async function fetchVetVaccinationData(
+  vetId: number
+): Promise<{ data: VetVaccinationDashboardResponse | null; error: string | null }> {
+  return vetFetchJson<VetVaccinationDashboardResponse>(`/api/vet/dashboard?vetId=${vetId}`);
 }
 
-export default async function VetDashboardPage({ searchParams }: VetDashboardPageProps) {
+export default async function VetDashboardPage() {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
     redirect("/home");
   }
 
-  const resolvedSearchParams = (await searchParams) ?? {};
-  const selectedDate = vetGetSearchValue(resolvedSearchParams.date);
-  const dashboardHref = "/vet/dashboard";
+  const homeHref = "/home";
+  const vaccinationsHref = "/vet/dashboard";
   const appointmentsHref = "/vet/appointments";
   const timelineHref = "/vet/timeline";
 
-  const { data, error } = await fetchVetDashboardData(selectedVetId, selectedDate);
+  const { data, error } = await fetchVetVaccinationData(selectedVetId);
 
   if (!data) {
     return (
       <main className={styles.page}>
         <div className={styles.container}>
           <section className={styles.card}>
-            <h1 className={styles.pageTitle}>Vet Dashboard</h1>
+            <h1 className={styles.pageTitle}>Vet Vaccinations</h1>
             <p className={styles.pageSubtitle}>Data load failed.</p>
             <p className={styles.errorText}>{error}</p>
           </section>
@@ -155,8 +103,6 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
   const vetName = withDoctorPrefix(data.profile.veterinarian_name);
   const profileInitials = getInitials(data.profile.veterinarian_name);
   const branchTitle = data.profile.branch_name ?? "No branch assigned";
-  const branchSubtitle = data.profile.branch_location ?? "Branch location not available";
-
   const vaccineSummary = Array.from(
     new Set(data.vaccination_records.map((record) => record.vaccine_name))
   )
@@ -168,107 +114,29 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
       <div className={styles.container}>
         <header className={styles.headerSplit}>
           <div className={styles.headerLeft}>
-            <Link href={dashboardHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
+            <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
             </Link>
           </div>
           <div className={styles.headerRight}>
             <nav className={`${styles.nav} ${styles.navRight}`}>
-              <Link href={dashboardHref} className={styles.active}>
-                Dashboard
-              </Link>
               <Link href={appointmentsHref}>Appointments</Link>
-              <Link href={timelineHref}>Timeline</Link>
+              <Link href={timelineHref}>Medical Records</Link>
+              <Link href={vaccinationsHref} className={styles.active}>
+                Vaccinations
+              </Link>
             </nav>
             <div className={styles.headerActions}>
               <details className={styles.profileDropdown}>
                 <summary className={styles.profileTrigger}>{profileInitials}</summary>
                 <div className={styles.profileMenu}>
-                  <Link href={dashboardHref}>My Profile</Link>
+                  <Link href={homeHref}>My Profile</Link>
                   <a href="#">Logout</a>
                 </div>
               </details>
             </div>
           </div>
         </header>
-
-        <section className={styles.hero}>
-          <div className={styles.card}>
-            <h1>Welcome, {vetName}</h1>
-            <p className={styles.sub}>
-              Document visits, prescriptions, and referrals. View pet medical history and manage
-              inventory-linked prescriptions.
-            </p>
-            <div className={`${styles.kpiRow} ${styles.mt2}`}>
-              <div className={styles.kpi}>
-                <div className={styles.label}>Today&apos;s appointments</div>
-                <div className={styles.value}>{data.metrics.todays_appointments}</div>
-              </div>
-              <div className={styles.kpi}>
-                <div className={styles.label}>Pending documentation</div>
-                <div className={styles.value}>{data.metrics.pending_documentation}</div>
-              </div>
-            </div>
-          </div>
-          <div className={styles.card}>
-            <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-            <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-              Open appointments
-            </Link>
-            <a href="#" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-              Create visit record
-            </a>
-            <Link href={timelineHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-              Create referral
-            </Link>
-          </div>
-        </section>
-
-        <section className={styles.card}>
-          <h2 className={styles.pageTitle}>Today&apos;s schedule</h2>
-          <p className={styles.pageSubtitle}>{branchTitle}</p>
-          <p className={styles.pageSubtitle}>{branchSubtitle}</p>
-          <div className={styles.tableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Pet</th>
-                  <th>Owner</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.today_schedule.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className={styles.emptyCell}>
-                      No appointments found for the selected date.
-                    </td>
-                  </tr>
-                ) : (
-                  data.today_schedule.map((appointment) => (
-                    <tr key={appointment.appointmentid}>
-                      <td>{formatClock(appointment.datetime)}</td>
-                      <td>{appointment.pet_name}</td>
-                      <td>{appointment.owner_name}</td>
-                      <td>
-                        <span className={getSchedulePillClass(appointment.status)}>
-                          {appointment.status}
-                        </span>
-                      </td>
-                      <td>
-                        <a href="#">
-                          {appointment.status === "Completed" ? "View" : "Open"}
-                        </a>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
         <section className={styles.card}>
           <h2 className={styles.pageTitle}>Vaccination Plan &amp; Records</h2>
