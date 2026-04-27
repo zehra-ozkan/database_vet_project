@@ -161,6 +161,10 @@ export default function HomePage() {
     if (!isVet || !vetId) {
       return;
     }
+    if (path === "dashboard") {
+      router.push("/vet/vaccinations");
+      return;
+    }
     router.push(`/vet/${path}`);
   };
 

@@ -55,6 +55,16 @@ type VetTimelineReferral = {
   referee_name: string;
 };
 
+type MicrochipStatus = "Active" | "Reported Lost" | "Found";
+
+type VetTimelineMicrochip = {
+  chip_id: string | null;
+  implantation_date: string | null;
+  registered_by: string | null;
+  status: MicrochipStatus | null;
+  last_known_location: string | null;
+};
+
 type VetTimelineProfile = {
   veterinarian_name: string;
   branch_name: string;
@@ -71,6 +81,7 @@ type VetTimelineResponse = {
   visit_events: VetTimelineVisit[];
   prescription_events: VetTimelinePrescription[];
   referral_events: VetTimelineReferral[];
+  microchip?: VetTimelineMicrochip | null;
 };
 
 type VetTimelinePageProps = {
@@ -90,6 +101,39 @@ type TimelineCardItem = {
   pillClass: string;
 };
 
+function withDoctorPrefix(name: string): string {
+  if (name.toLowerCase().startsWith("dr.")) {
+    return name;
+  }
+  return `Dr. ${name}`;
+}
+
+function getInitials(name: string): string {
+  const parts = name
+    .replace(/^dr\.?\s*/i, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return "VT";
+  }
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function formatClock(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "--:--";
+  }
+  return parsed.toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDate(value: string | null): string {
   if (!value) {
     return "-";
@@ -103,6 +147,16 @@ function formatDate(value: string | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function getMicrochipStatusPillClass(status: MicrochipStatus): string {
+  if (status === "Reported Lost") {
+    return `${styles.pill} ${styles.pillDanger}`;
+  }
+  if (status === "Found") {
+    return `${styles.pill} ${styles.pillInfo}`;
+  }
+  return `${styles.pill} ${styles.pillOk}`;
 }
 
 function toSortableTimestamp(value: string | null): number {
@@ -180,8 +234,9 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
   const requestedPetId = requestedPetIdRaw ? vetParsePositiveInt(requestedPetIdRaw, 0) || null : null;
 
   const homeHref = "/home";
-  const vaccinationsHref = "/vet/dashboard";
+  const vaccinationsHref = "/vet/vaccinations";
   const appointmentsHref = "/vet/appointments";
+  const profileHref = "/vet/profile";
 
   const { data, error } = await fetchVetTimelineData(selectedVetId, requestedPetId);
 
@@ -199,26 +254,35 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
     );
   }
 
-  const initials = data.profile.veterinarian_name
-    .split(" ")
-    .map((chunk) => chunk[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = getInitials(data.profile.veterinarian_name);
+  const vetName = withDoctorPrefix(data.profile.veterinarian_name);
 
   const timelineCards = buildTimelineCards(
     data.visit_events,
     data.vaccination_records,
     data.prescription_events
   );
+  const timelineEventCount = timelineCards.length;
+  const referralCount = data.referral_events.length;
+  const visitPreview = data.visit_events.slice(0, 6);
+  const microchipSnapshot = data.selected_pet
+    ? {
+        chipId: data.microchip?.chip_id ?? `CHIP-${String(data.selected_pet.petid).padStart(6, "0")}`,
+        implantationDate: data.microchip?.implantation_date ?? null,
+        registeredBy: data.microchip?.registered_by ?? vetName,
+        status: data.microchip?.status ?? "Active",
+        lastKnownLocation: data.microchip?.last_known_location ?? data.profile.branch_name,
+      }
+    : null;
 
   return (
     <main className={styles.page}>
-      <div className={styles.container}>
-        <header className={styles.headerSplit}>
+      <div className={`${styles.container} ${styles.pageSplitContainer}`}>
+        <header className={`${styles.headerSplit} ${styles.pageSplitHeader}`}>
           <div className={styles.headerLeft}>
             <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
+              <span className={styles.brandGreeting}>Hello, {vetName}</span>
             </Link>
           </div>
           <div className={styles.headerRight}>
@@ -233,7 +297,7 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
               <details className={styles.profileDropdown}>
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
-                  <Link href={homeHref}>My Profile</Link>
+                  <Link href={profileHref}>My Profile</Link>
                   <a href="#">Logout</a>
                 </div>
               </details>
@@ -241,7 +305,72 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
           </div>
         </header>
 
-        <section className={styles.card}>
+        <div className={styles.pageSplit}>
+          <aside className={styles.sideColumn}>
+            <section className={styles.card}>
+              <h1>Medical records overview</h1>
+              <p className={styles.sub}>
+                Track visits, prescriptions, and vaccination history for the selected pet.
+              </p>
+              <div className={`${styles.kpiRow} ${styles.mt2}`}>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Timeline events</div>
+                  <div className={styles.value}>{timelineEventCount}</div>
+                </div>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Referral records</div>
+                  <div className={styles.value}>{referralCount}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.card}>
+              <h2 className={styles.quickActionsTitle}>Quick actions</h2>
+              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
+                Open appointments
+              </Link>
+              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                Create visit record
+              </Link>
+              <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                Create referral
+              </Link>
+            </section>
+
+            <section className={styles.card}>
+              <h2 className={styles.pageTitle}>Recent visits</h2>
+              <p className={styles.pageSubtitle}>{data.selected_pet?.pet_name ?? data.profile.branch_name}</p>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Pet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visitPreview.length === 0 ? (
+                      <tr>
+                        <td colSpan={2} className={styles.emptyCell}>
+                          No visit event found.
+                        </td>
+                      </tr>
+                    ) : (
+                      visitPreview.map((visit) => (
+                        <tr key={`visit-preview-${visit.appointmentid}`}>
+                          <td>{formatClock(visit.datetime)}</td>
+                          <td>{data.selected_pet?.pet_name ?? "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </aside>
+          <div className={styles.splitDivider} aria-hidden />
+
+          <section className={`${styles.card} ${styles.pageSplitMain}`}>
           <h1 className={styles.pageTitle}>Medical Timeline</h1>
           <p className={styles.pageSubtitle}>
             Complete history: diagnoses, prescriptions, vaccinations, referrals
@@ -264,7 +393,7 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
             </div>
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>Apply</label>
-              <button type="submit" className={styles.btn}>
+              <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
                 Load timeline
               </button>
             </div>
@@ -276,6 +405,26 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
               <p className={styles.tileSub}>
                 {data.selected_pet.species ?? "-"} · {data.selected_pet.breed ?? "-"} · Age:{" "}
                 {data.selected_pet.age ?? "-"} · Owner: {data.selected_pet.owner_name}
+              </p>
+            </div>
+          )}
+
+          {microchipSnapshot && (
+            <div className={`${styles.tile} ${styles.mt2}`}>
+              <div className={styles.tileTitle}>Microchip Information</div>
+              <p className={styles.tileSub}>Chip ID: {microchipSnapshot.chipId}</p>
+              <p className={styles.tileSub}>
+                Implantation date: {formatDate(microchipSnapshot.implantationDate)}
+              </p>
+              <p className={styles.tileSub}>Registered by: {microchipSnapshot.registeredBy}</p>
+              <p className={styles.tileSub}>
+                Status:{" "}
+                <span className={getMicrochipStatusPillClass(microchipSnapshot.status)}>
+                  {microchipSnapshot.status}
+                </span>
+              </p>
+              <p className={styles.tileSub}>
+                Last known location: {microchipSnapshot.lastKnownLocation ?? "-"}
               </p>
             </div>
           )}
@@ -365,6 +514,7 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
             </div>
           </div>
         </section>
+      </div>
       </div>
     </main>
   );

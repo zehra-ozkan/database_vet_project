@@ -32,7 +32,7 @@ function withDoctorPrefix(name: string): string {
 
 function getInitials(name: string): string {
   const parts = name
-    .replace("Dr.", "")
+    .replace(/^dr\.?\s*/i, "")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
@@ -80,9 +80,10 @@ export default async function VetDashboardPage() {
   }
 
   const homeHref = "/home";
-  const vaccinationsHref = "/vet/dashboard";
+  const vaccinationsHref = "/vet/vaccinations";
   const appointmentsHref = "/vet/appointments";
   const timelineHref = "/vet/timeline";
+  const profileHref = "/vet/profile";
 
   const { data, error } = await fetchVetVaccinationData(selectedVetId);
 
@@ -108,14 +109,19 @@ export default async function VetDashboardPage() {
   )
     .slice(0, 3)
     .join(", ");
+  const overdueVaccinationCount = data.vaccination_records.filter((record) =>
+    record.vaccination_status.startsWith("Overdue")
+  ).length;
+  const vaccinationPreview = data.vaccination_records.slice(0, 6);
 
   return (
     <main className={styles.page}>
-      <div className={styles.container}>
-        <header className={styles.headerSplit}>
+      <div className={`${styles.container} ${styles.pageSplitContainer}`}>
+        <header className={`${styles.headerSplit} ${styles.pageSplitHeader}`}>
           <div className={styles.headerLeft}>
             <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
+              <span className={styles.brandGreeting}>Hello, {vetName}</span>
             </Link>
           </div>
           <div className={styles.headerRight}>
@@ -130,7 +136,7 @@ export default async function VetDashboardPage() {
               <details className={styles.profileDropdown}>
                 <summary className={styles.profileTrigger}>{profileInitials}</summary>
                 <div className={styles.profileMenu}>
-                  <Link href={homeHref}>My Profile</Link>
+                  <Link href={profileHref}>My Profile</Link>
                   <a href="#">Logout</a>
                 </div>
               </details>
@@ -138,7 +144,72 @@ export default async function VetDashboardPage() {
           </div>
         </header>
 
-        <section className={styles.card}>
+        <div className={styles.pageSplit}>
+          <aside className={styles.sideColumn}>
+            <section className={styles.card}>
+              <h1>Vaccination overview</h1>
+              <p className={styles.sub}>
+                Review due and overdue vaccine records before clinical updates.
+              </p>
+              <div className={`${styles.kpiRow} ${styles.mt2}`}>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Vaccination records</div>
+                  <div className={styles.value}>{data.vaccination_records.length}</div>
+                </div>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Overdue items</div>
+                  <div className={styles.value}>{overdueVaccinationCount}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.card}>
+              <h2 className={styles.quickActionsTitle}>Quick actions</h2>
+              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
+                Open appointments
+              </Link>
+              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                Create visit record
+              </Link>
+              <Link href={timelineHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                Create referral
+              </Link>
+            </section>
+
+            <section className={styles.card}>
+              <h2 className={styles.pageTitle}>Vaccination queue</h2>
+              <p className={styles.pageSubtitle}>{branchTitle}</p>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Pet</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vaccinationPreview.length === 0 ? (
+                      <tr>
+                        <td colSpan={2} className={styles.emptyCell}>
+                          No vaccination record found.
+                        </td>
+                      </tr>
+                    ) : (
+                      vaccinationPreview.map((record, index) => (
+                        <tr key={`vaccination-preview-${record.pet_name}-${index}`}>
+                          <td>{record.pet_name}</td>
+                          <td>{record.vaccination_status}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </aside>
+          <div className={styles.splitDivider} aria-hidden />
+
+          <section className={`${styles.card} ${styles.pageSplitMain}`}>
           <h2 className={styles.pageTitle}>Vaccination Plan &amp; Records</h2>
           <p className={styles.pageSubtitle}>
             Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights
@@ -196,6 +267,7 @@ export default async function VetDashboardPage() {
             </table>
           </div>
         </section>
+      </div>
       </div>
     </main>
   );
