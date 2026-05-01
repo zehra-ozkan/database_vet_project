@@ -91,6 +91,181 @@ def owner_pet_profiles():
     return jsonify(rows)
 
 
+# Load selected pet profile details
+@owner_bp.route("/api/owner/pets/<int:pet_id>/profile", methods=["GET"])
+def owner_pet_profile(pet_id: int):
+    owner_id = request.args.get("ownerId", type=int)
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    row = fetch_one(
+        """
+        SELECT p.petID, p.name, p.species, p.breed, p.age,
+               c.chipID, c.location, c.isLost
+        FROM Pet p
+        LEFT JOIN Chip c ON c.petID = p.petID
+        WHERE p.petID = %s AND p.ownerID = %s;
+        """,
+        (pet_id, owner_id),
+    )
+    if row is None:
+        return jsonify({"error": "Pet not found"}), 404
+    return jsonify(row)
+
+
+# Load the vaccination plan of the selected pet
+@owner_bp.route("/api/owner/pets/<int:pet_id>/vaccination-plan-booking", methods=["GET"])
+def get_vaccination_plan_booking(pet_id: int):
+    rows = fetch_all(
+        """
+        SELECT vp.planID, vp.nextVaccinationDate, vp.petID, vp.veterinarianID
+        FROM VaccinationPlan vp
+        WHERE vp.petID = %s
+        ORDER BY vp.nextVaccinationDate ASC;
+        """,
+        (pet_id,),
+    )
+    return jsonify(rows)
+
+
+# Load recommended veterinarians for the selected vaccination plan
+@owner_bp.route("/api/owner/vaccination-plans/<int:plan_id>/recommended-vets", methods=["GET"])
+def get_recommended_vets(plan_id: int):
+    rows = fetch_all(
+        """
+        SELECT DISTINCT
+            r.appointmentID,
+            v.veterinarianID,
+            u.name AS veterinarianName,
+            b.name AS branchName,
+            v.speciesExpertise,
+            v.availableDates
+        FROM Appointment a
+        JOIN Recommended r ON r.appointmentID = a.appointmentID
+        JOIN Veterinarian v ON v.veterinarianID = r.veterinarianID
+        JOIN User u ON u.userID = v.veterinarianID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
+        WHERE a.vaccinationPlanID = %s
+        ORDER BY u.name;
+        """,
+        (plan_id,),
+    )
+    return jsonify(rows)
+
+
+# Check occupied appointment times of the selected veterinarian
+@owner_bp.route("/api/owner/appointments/occupied", methods=["GET"])
+def get_occupied_slots():
+    vet_id = request.args.get("vetId", type=int)
+    date = request.args.get("date")
+    if vet_id is None or not date:
+        return jsonify({"error": "vetId and date are required"}), 400
+
+    rows = fetch_all(
+        """
+        SELECT appointmentID, dateTime, type
+        FROM Appointment
+        WHERE veterinarianID = %s AND DATE(dateTime) = %s
+        ORDER BY dateTime;
+        """,
+        (vet_id, date),
+    )
+    return jsonify(rows)
+
+
+# Create the vaccination appointment
+@owner_bp.route("/api/owner/appointments/vaccination", methods=["POST"])
+def create_vaccination_appointment():
+    data = request.get_json() or {}
+    required_fields = ["appointmentId", "dateTime", "vaccinationPlanId", "veterinarianId", "petOwnerId"]
+    missing = [field for field in required_fields if data.get(field) is None]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        """
+        INSERT INTO Appointment (appointmentID, type, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
+        VALUES (%s, 'VACCINATION', %s, %s, %s, %s);
+        """,
+        (
+            data["appointmentId"],
+            data["dateTime"],
+            data["vaccinationPlanId"],
+            data["veterinarianId"],
+            data["petOwnerId"],
+        ),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"appointmentId": data["appointmentId"]})
+
+
+# Load allergy information of the pet
+@owner_bp.route("/api/owner/pets/<int:pet_id>/allergies", methods=["GET"])
+def get_pet_allergies(pet_id: int):
+    rows = fetch_all(
+        """
+        SELECT pastDiagnosis, allergies
+        FROM MedicalHistory
+        WHERE petID = %s;
+        """,
+        (pet_id,),
+    )
+    return jsonify(rows)
+
+
+# Load vaccination status
+@owner_bp.route("/api/owner/pets/<int:pet_id>/vaccination-plans", methods=["GET"])
+def get_vaccination_plans(pet_id: int):
+    rows = fetch_all(
+        """
+        SELECT vp.planID, vp.nextVaccinationDate
+        FROM VaccinationPlan vp
+        WHERE vp.petID = %s
+        ORDER BY vp.nextVaccinationDate ASC;
+        """,
+        (pet_id,),
+    )
+    return jsonify(rows)
+
+
+# Load recent vaccination records
+@owner_bp.route("/api/owner/pets/<int:pet_id>/vaccination-records", methods=["GET"])
+def get_vaccination_records(pet_id: int):
+    rows = fetch_all(
+        """
+        SELECT vr.recordID, vr.shotDate, vr.nextDueDate
+        FROM VaccinationRecord vr
+        WHERE vr.petID = %s
+        ORDER BY vr.shotDate DESC;
+        """,
+        (pet_id,),
+    )
+    return jsonify(rows)
+
+
+# Load recent activity
+@owner_bp.route("/api/owner/pets/<int:pet_id>/activity", methods=["GET"])
+def get_pet_activity(pet_id: int):
+    owner_id = request.args.get("ownerId", type=int)
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    rows = fetch_all(
+        """
+        SELECT a.appointmentID, a.dateTime, a.type
+        FROM Appointment a
+        WHERE a.petOwnerID = %s
+        ORDER BY a.dateTime DESC;
+        """,
+        (owner_id,),
+    )
+    return jsonify(rows)
+
+
 # Add a new pet profile
 @owner_bp.route("/api/owner/pets", methods=["POST"])
 def add_pet():
@@ -196,6 +371,22 @@ def update_allergies(pet_id: int):
     if row is None:
         return jsonify({"error": "Medical history entry not found"}), 404
     return jsonify({"petId": row["petid"]})
+
+
+# Load microchip details
+@owner_bp.route("/api/owner/pets/<int:pet_id>/chip", methods=["GET"])
+def get_chip_details(pet_id: int):
+    row = fetch_one(
+        """
+        SELECT chipID, location, isLost, implantationDate, veterinarianID
+        FROM Chip
+        WHERE petID = %s;
+        """,
+        (pet_id,),
+    )
+    if row is None:
+        return jsonify({"error": "No chip registered"}), 404
+    return jsonify(row)
 
 
 # Register a chip for a pet

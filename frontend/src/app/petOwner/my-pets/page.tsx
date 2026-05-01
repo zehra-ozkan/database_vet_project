@@ -362,7 +362,7 @@ export default function PetOwnerMyPetsPage() {
                   ) : null}
                 </div>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <button className="btn">View Profile</button>
+                  <Link href={`/petOwner/pet-profile?petId=${pet.id}`} className="btn">View Profile</Link>
                   <button className="btn ghost" type="button" onClick={() => setEditingPetId(editingPetId === pet.id ? null : pet.id)}>
                     {editingPetId === pet.id ? "Close" : "Edit"}
                   </button>
