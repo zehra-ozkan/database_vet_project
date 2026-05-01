@@ -86,7 +86,7 @@ def register():
     if not all([name, email, password, phone, role]):
         return jsonify({"error": "All fields are required"}), 400
         
-    if role not in ['owner', 'vet', 'manager']:
+    if role not in ['PetOwner', 'Veterinarian', 'ClinicManager']:
         return jsonify({"error": "Invalid role"}), 400
         
     try:
@@ -113,11 +113,11 @@ def register():
         
         user_id = cur.fetchone()[0]
         # Insert into role-specific table
-        if role == 'owner':
+        if role == 'PetOwner':
             cur.execute('INSERT INTO PetOwner (ownerID) VALUES (%s)', (user_id,))
-        elif role == 'vet':
+        elif role == 'Veterinarian':
             cur.execute('INSERT INTO Veterinarian (veterinarianID) VALUES (%s)', (user_id,))
-        elif role == 'manager':
+        elif role == 'ClinicManager':
             cur.execute('INSERT INTO ClinicManager (managerID) VALUES (%s)', (user_id,))
 
         

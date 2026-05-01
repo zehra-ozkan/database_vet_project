@@ -1,0 +1,13 @@
+.git/
+.venv/
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/out/
+**/*.log
+.env
+.env.*
+.vscode/
+.DS_Store
+report/
