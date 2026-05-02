@@ -61,9 +61,24 @@ def dashboard_summary():
     summary = fetch_one(
         f"""
         SELECT
+            (SELECT COUNT(*) FROM Medicine WHERE quantity <= COALESCE(threshold, 0)) AS lowStockCount,
             (SELECT COUNT(*) FROM Medicine WHERE quantity <= COALESCE(threshold, 0)) AS lowStockItems,
             (SELECT COUNT(*) FROM Medicine WHERE status IN ('expired', 'damaged')) AS expiredDamagedItems,
             (SELECT COUNT(*) FROM VaccinationRecord WHERE nextDueDate < CURRENT_DATE) AS overdueVaccinations,
+            (SELECT COUNT(*) FROM WasteLog) AS wastedInventory,
+            (SELECT COUNT(*) FROM Prescribes) AS stockConsumption,
+            (SELECT COUNT(*) FROM Pet) AS totalPets,
+            (SELECT COUNT(DISTINCT petID) FROM VaccinationRecord) AS vaccinatedPets,
+            (
+                SELECT
+                    CASE
+                        WHEN COUNT(*) = 0 THEN NULL
+                        ELSE ROUND(((SELECT COUNT(DISTINCT petID) FROM VaccinationRecord)::numeric / COUNT(*)::numeric) * 100, 1)
+                    END
+                FROM Pet
+            ) AS vaccinationCompliance,
+            (SELECT COALESCE(SUM({total_expr}), 0) FROM Bill WHERE paid = TRUE) AS revenue,
+            (SELECT COALESCE(SUM({total_expr}), 0) FROM Bill WHERE paid = FALSE) AS totalUnpaid,
             (SELECT COALESCE(SUM({total_expr}), 0) FROM Bill WHERE paid = FALSE) AS unpaidBillsTotal
         """
     )
@@ -167,6 +182,30 @@ def recent_activity():
     return jsonify(rows)
 
 
+@manager_bp.route("/api/manager/branches", methods=["GET"])
+def manager_branches():
+    rows = fetch_all(
+        """
+        SELECT branchID, name
+        FROM Branch
+        ORDER BY name ASC
+        """
+    )
+    return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/medicine-names", methods=["GET"])
+def manager_medicine_names():
+    rows = fetch_all(
+        """
+        SELECT DISTINCT name
+        FROM Medicine
+        ORDER BY name ASC
+        """
+    )
+    return jsonify(rows)
+
+
 @manager_bp.route("/api/manager/inventory", methods=["GET"])
 def inventory():
     clauses = []
@@ -183,8 +222,8 @@ def inventory():
         clauses.append("m.branchID = %s")
         params.append(branch)
     if name:
-        clauses.append("LOWER(m.name) LIKE LOWER(%s)")
-        params.append(f"%{name}%")
+        clauses.append("m.name = %s")
+        params.append(name)
     if category:
         clauses.append("m.category::text = %s")
         params.append(category)
@@ -195,6 +234,8 @@ def inventory():
         params.append(status)
     if expiry == "expired":
         clauses.append("m.expiracyDate < CURRENT_DATE")
+    elif expiry == "valid":
+        clauses.append("m.expiracyDate > CURRENT_DATE")
     elif expiry == "soon":
         clauses.append("m.expiracyDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")
 
@@ -257,6 +298,35 @@ def update_threshold(medicine_id):
     conn.close()
     if row is None:
         return jsonify({"error": "Medicine not found"}), 404
+    return jsonify({key: serialize_value(value) for key, value in dict(row).items()})
+
+
+@manager_bp.route("/api/manager/medicine/threshold", methods=["PUT"])
+def update_medicine_threshold():
+    data = request.get_json() or {}
+    medicine_id = data.get("medicineID")
+    branch_id = data.get("branchID")
+    threshold = data.get("threshold")
+    if not medicine_id or not branch_id or threshold is None:
+        return jsonify({"error": "medicineID, branchID, and threshold are required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        """
+        UPDATE Medicine
+        SET threshold = %s
+        WHERE medicineID = %s AND branchID = %s
+        RETURNING medicineID, branchID, threshold
+        """,
+        (threshold, medicine_id, branch_id),
+    )
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if row is None:
+        return jsonify({"error": "Medicine not found for selected branch"}), 404
     return jsonify({key: serialize_value(value) for key, value in dict(row).items()})
 
 
@@ -330,25 +400,60 @@ def log_supply():
     return jsonify({key: serialize_value(value) for key, value in dict(row).items()}), 201
 
 
+@manager_bp.route("/api/manager/medicine/supply", methods=["PUT"])
+def update_medicine_supply():
+    data = request.get_json() or {}
+    medicine_id = data.get("medicineID")
+    branch_id = data.get("branchID")
+    quantity = data.get("quantity")
+    expiration_date = data.get("expirationDate")
+    if not medicine_id or not branch_id or quantity is None or not expiration_date:
+        return jsonify({"error": "medicineID, branchID, quantity, and expirationDate are required"}), 400
+    if int(quantity) <= 0:
+        return jsonify({"error": "quantity must be positive"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        """
+        UPDATE Medicine
+        SET quantity = COALESCE(quantity, 0) + %s,
+            expiracyDate = %s,
+            status = 'safe'
+        WHERE medicineID = %s AND branchID = %s
+        RETURNING medicineID, branchID, name, quantity, expiracyDate AS expiryDate, status::text AS status
+        """,
+        (quantity, expiration_date, medicine_id, branch_id),
+    )
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if row is None:
+        return jsonify({"error": "Medicine not found for selected branch"}), 404
+    return jsonify({key: serialize_value(value) for key, value in dict(row).items()})
+
+
 @manager_bp.route("/api/manager/logs/waste", methods=["GET"])
 def waste_logs():
     rows = fetch_all(
         """
         SELECT
-            wl.wasteLogID,
-            wl.medicineID,
+            w.wasteLogID,
+            w.medicineID,
             m.name AS medicineName,
-            m.category::text AS category,
-            b.name AS branch,
-            m.status::text AS status,
-            wl.notes
-        FROM WasteLog wl
-        JOIN Medicine m ON m.medicineID = wl.medicineID
-        JOIN Branch b ON b.branchID = m.branchID
-        ORDER BY wl.wasteLogID DESC
+            w.notes
+        FROM WasteLog w
+        JOIN Medicine m ON m.medicineID = w.medicineID
+        ORDER BY w.wasteLogID DESC
         """
     )
     return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/wastelog", methods=["GET"])
+def manager_waste_log():
+    return waste_logs()
 
 
 @manager_bp.route("/api/manager/logs/supply", methods=["GET"])
@@ -396,6 +501,11 @@ def create_waste_log():
     return jsonify({key: serialize_value(value) for key, value in dict(row).items()}), 201
 
 
+@manager_bp.route("/api/manager/wastelog", methods=["POST"])
+def create_manager_waste_log():
+    return create_waste_log()
+
+
 @manager_bp.route("/api/manager/vaccinations/summary", methods=["GET"])
 def vaccination_summary():
     summary = fetch_one(
@@ -403,7 +513,7 @@ def vaccination_summary():
         SELECT
             COUNT(*) FILTER (WHERE nextDueDate < CURRENT_DATE) AS overdue,
             COUNT(*) FILTER (WHERE nextDueDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days') AS dueWithin30Days,
-            COUNT(*) FILTER (WHERE nextDueDate >= CURRENT_DATE + INTERVAL '30 days') AS upToDate,
+            COUNT(*) FILTER (WHERE nextDueDate > CURRENT_DATE + INTERVAL '30 days') AS upToDate,
             CASE
                 WHEN COUNT(*) = 0 THEN 100
                 ELSE ROUND((COUNT(*) FILTER (WHERE nextDueDate >= CURRENT_DATE)::numeric / COUNT(*)::numeric) * 100, 1)
@@ -412,6 +522,11 @@ def vaccination_summary():
         """
     )
     return jsonify(summary)
+
+
+@manager_bp.route("/api/manager/vaccination/summary", methods=["GET"])
+def vaccination_summary_singular():
+    return vaccination_summary()
 
 
 @manager_bp.route("/api/manager/vaccinations", methods=["GET"])
@@ -488,6 +603,58 @@ def vaccinations():
     return jsonify(rows)
 
 
+@manager_bp.route("/api/manager/vaccination", methods=["GET"])
+def vaccination_records_singular():
+    clauses = []
+    params = []
+
+    branch = request.args.get("branch")
+    status = request.args.get("status")
+
+    if branch:
+        clauses.append("v.branchID = %s")
+        params.append(branch)
+    if status == "overdue":
+        clauses.append("vr.nextDueDate < CURRENT_DATE")
+    elif status == "due_soon":
+        clauses.append("vr.nextDueDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")
+    elif status == "up_to_date":
+        clauses.append("vr.nextDueDate > CURRENT_DATE + INTERVAL '30 days'")
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = fetch_all(
+        f"""
+        SELECT
+            vr.recordID,
+            p.name AS petName,
+            u.name AS ownerName,
+            COALESCE(m.name, 'Vaccine plan') AS vaccineName,
+            vr.shotDate AS lastShotDate,
+            vr.nextDueDate,
+            b.name AS branch,
+            CASE
+                WHEN vr.nextDueDate < CURRENT_DATE THEN 'overdue'
+                WHEN vr.nextDueDate <= CURRENT_DATE + INTERVAL '30 days' THEN 'due_soon'
+                ELSE 'up_to_date'
+            END AS status
+        FROM VaccinationRecord vr
+        JOIN Pet p ON p.petID = vr.petID
+        JOIN PetOwner po ON po.ownerID = p.ownerID
+        JOIN Users u ON u.userID = po.ownerID
+        JOIN VaccinationPlan vp ON vp.planID = vr.planID
+        JOIN Veterinarian v ON v.veterinarianID = vp.veterinarianID
+        JOIN Branch b ON b.branchID = v.branchID
+        LEFT JOIN Involves i ON i.recordID = vr.recordID
+        LEFT JOIN Vaccine vac ON vac.vaccineID = i.vaccineID
+        LEFT JOIN Medicine m ON m.medicineID = vac.vaccineID
+        {where}
+        ORDER BY vr.nextDueDate ASC
+        """,
+        tuple(params),
+    )
+    return jsonify(rows)
+
+
 @manager_bp.route("/api/manager/billing/summary", methods=["GET"])
 def billing_summary():
     total_expr = money_sum_expression()
@@ -495,7 +662,9 @@ def billing_summary():
         f"""
         SELECT
             COUNT(*) FILTER (WHERE paid = FALSE) AS unpaidInvoicesCount,
+            COALESCE(SUM({total_expr}) FILTER (WHERE paid = TRUE), 0) AS totalRevenue,
             COALESCE(SUM({total_expr}) FILTER (WHERE paid = TRUE AND dueDate >= date_trunc('month', CURRENT_DATE)), 0) AS paidThisMonth,
+            COALESCE(SUM({total_expr}) FILTER (WHERE paid = FALSE), 0) AS totalUnpaid,
             COUNT(*) FILTER (WHERE paid = FALSE AND dueDate < CURRENT_DATE) AS overdueBills,
             COALESCE(AVG({total_expr}), 0) AS averageBill
         FROM Bill
