@@ -76,10 +76,10 @@ async function fetchVetVaccinationData(
 export default async function VetDashboardPage() {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
-    redirect("/home");
+    redirect("/vet/dashboard");
   }
 
-  const homeHref = "/home";
+  const homeHref = "/vet/dashboard";
   const vaccinationsHref = "/vet/vaccinations";
   const appointmentsHref = "/vet/appointments";
   const timelineHref = "/vet/timeline";
