@@ -226,14 +226,14 @@ async function fetchVetTimelineData(
 export default async function VetTimelinePage({ searchParams }: VetTimelinePageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
-    redirect("/home");
+    redirect("/vet/dashboard");
   }
 
   const resolvedSearchParams = (await searchParams) ?? {};
   const requestedPetIdRaw = vetGetSearchValue(resolvedSearchParams.petId);
   const requestedPetId = requestedPetIdRaw ? vetParsePositiveInt(requestedPetIdRaw, 0) || null : null;
 
-  const homeHref = "/home";
+  const homeHref = "/vet/dashboard";
   const vaccinationsHref = "/vet/vaccinations";
   const appointmentsHref = "/vet/appointments";
   const profileHref = "/vet/profile";

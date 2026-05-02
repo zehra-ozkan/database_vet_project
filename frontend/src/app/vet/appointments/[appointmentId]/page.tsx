@@ -65,7 +65,7 @@ async function fetchVetAppointments(vetId: number): Promise<{ data: VetAppointme
 export default async function AppointmentDetailPage({ params, searchParams }: AppointmentDetailPageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
-    redirect("/home");
+    redirect("/vet/dashboard");
   }
 
   const resolvedParams = await params;
@@ -102,7 +102,7 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
       <div className={styles.container}>
         <header className={styles.headerSplit}>
           <div className={styles.headerLeft}>
-            <Link href="/home" className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
+            <Link href="/vet/dashboard" className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
               <div className={styles.mark} />
             </Link>
           </div>
