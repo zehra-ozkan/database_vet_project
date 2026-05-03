@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isManager, normalizeStoredUser } from "@/lib/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -32,15 +33,20 @@ export default function Login() {
         throw new Error(data.error || "Failed to login");
       }
 
-      // Login successful, optionally save user to localStorage
-      localStorage.setItem("user", JSON.stringify(data.user));
-      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(data.user))}; path=/; max-age=604800; samesite=lax`;
+      const user = normalizeStoredUser(data.user);
+      if (!user) {
+        throw new Error("Login response did not include a valid user role");
+      }
 
-      // Only clinic managers get the new manager section; all other roles keep the current generic page.
-      if (data.user?.role === "ClinicManager") {
+      localStorage.setItem("user", JSON.stringify(user));
+      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
+
+      if (isManager(user)) {
         router.push("/manager/dashboard");
+      } else if (user.role === "Veterinarian" || user.role === "vet") {
+        router.push("/vet/dashboard");
       } else {
-        router.push("/home");
+        router.push("/petOwner/dashboard");
       }
 
     } catch (err) {

@@ -8,9 +8,17 @@ export interface ManagerUser {
 }
 
 export interface DashboardSummary {
+  lowstockcount: number;
   lowstockitems: number;
   expireddamageditems: number;
   overduevaccinations: number;
+  wastedinventory: number;
+  stockconsumption: number;
+  totalpets: number;
+  vaccinatedpets: number;
+  vaccinationcompliance: number | null;
+  revenue: number;
+  totalunpaid: number;
   unpaidbillstotal: number;
 }
 
@@ -44,9 +52,6 @@ export interface WasteLog {
   wastelogid: number;
   medicineid: number;
   medicinename: string;
-  category: string;
-  branch: string;
-  status: string;
   notes: string;
 }
 
@@ -74,6 +79,7 @@ export interface VaccinationRow {
   breed: string;
   vaccinename: string;
   lastshotdate: string;
+  batch?: string | null;
   nextduedate: string;
   status: StatusTone;
   recommendedvet: string;
@@ -82,7 +88,9 @@ export interface VaccinationRow {
 
 export interface BillingSummary {
   unpaidinvoicescount: number;
+  totalrevenue: number;
   paidthismonth: number;
+  totalunpaid: number;
   overduebills: number;
   averagebill: number;
 }

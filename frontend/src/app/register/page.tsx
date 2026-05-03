@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { normalizeStoredUser } from "@/lib/auth";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -34,15 +35,18 @@ export default function Register() {
         throw new Error(data.error || "Failed to register");
       }
 
-      // Registration successful, save user to localStorage
-      localStorage.setItem("user", JSON.stringify(data.user));
-      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(data.user))}; path=/; max-age=604800; samesite=lax`;
+      const user = normalizeStoredUser(data.user);
+      if (!user) {
+        throw new Error("Registration response did not include a valid user role");
+      }
+
+      localStorage.setItem("user", JSON.stringify(user));
+      document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
       
-      // Redirect to home dashboard
-      router.push("/home");
+      router.push("/petOwner/dashboard");
       
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to register");
     } finally {
       setLoading(false);
     }
