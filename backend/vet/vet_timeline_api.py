@@ -6,6 +6,8 @@ from vet.vet_db import vet_get_db_connection, vet_serialize_records
 
 vet_timeline_bp = Blueprint("vet_timeline_bp", __name__)
 
+_VET_REFERRAL_APPROVAL_MARKER = "[[APPROVED_APPT:"
+
 
 def _vet_parse_optional_positive_int(raw_value):
     """Parse positive integer values, allowing empty values as None."""
@@ -29,6 +31,21 @@ def _vet_resolve_vet_id(payload=None):
     if vet_id <= 0:
         raise ValueError("vetId must be a positive integer.")
     return vet_id
+
+
+def _vet_clean_referral_diagnosis(diagnosis):
+    """Hide internal referral approval marker from UI responses."""
+    if diagnosis is None:
+        return None
+
+    diagnosis_text = str(diagnosis)
+    marker_index = diagnosis_text.find(_VET_REFERRAL_APPROVAL_MARKER)
+    if marker_index < 0:
+        normalized = diagnosis_text.strip()
+        return normalized if normalized else None
+
+    diagnosis_without_marker = diagnosis_text[:marker_index].strip()
+    return diagnosis_without_marker if diagnosis_without_marker else None
 
 
 @vet_timeline_bp.route("/api/vet/timeline", methods=["GET"])
@@ -273,6 +290,10 @@ def vet_get_timeline():
             (vet_id,),
         )
         referral_events = cursor.fetchall()
+        for referral_event in referral_events:
+            referral_event["diagnosis"] = _vet_clean_referral_diagnosis(
+                referral_event.get("diagnosis")
+            )
 
         cursor.execute(
             """
@@ -291,6 +312,10 @@ def vet_get_timeline():
             (vet_id,),
         )
         incoming_referral_events = cursor.fetchall()
+        for referral_event in incoming_referral_events:
+            referral_event["diagnosis"] = _vet_clean_referral_diagnosis(
+                referral_event.get("diagnosis")
+            )
 
         return jsonify(
             {

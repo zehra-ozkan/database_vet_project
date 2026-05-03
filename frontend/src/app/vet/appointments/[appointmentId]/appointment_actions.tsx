@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "../../dashboard/vet_dashboard_page.module.css";
@@ -27,6 +27,27 @@ type AppointmentActionsProps = {
   isCompleted: boolean;
   medicines: MedicineOption[];
   referralTargets: ReferralTarget[];
+};
+
+type AppointmentDraft = {
+  selectedPetId: number | null;
+  visitNotes: string;
+  treatment: string;
+  selectedMedicineIds: number[];
+  refereeVetId: number | null;
+  referralDiagnosis: string;
+  consultationFee: string;
+  treatmentCost: string;
+  medicationCost: string;
+  dueDate: string;
+  appointmentDateTime: string;
+};
+
+type FinalizeResponse = {
+  message?: string;
+  follow_up_appointment?: unknown | null;
+  prescription?: unknown | null;
+  referral?: unknown | null;
 };
 
 const clientApiBaseCandidates = Array.from(
@@ -101,9 +122,7 @@ export default function AppointmentActions({
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
   const [prescriptionSaving, setPrescriptionSaving] = useState(false);
 
-  const [refereeVetId, setRefereeVetId] = useState<number | null>(
-    referralTargets.length > 0 ? referralTargets[0].veterinarianid : null
-  );
+  const [refereeVetId, setRefereeVetId] = useState<number | null>(null);
   const [referralDiagnosis, setReferralDiagnosis] = useState("");
   const [referralMessage, setReferralMessage] = useState<string | null>(null);
   const [referralError, setReferralError] = useState<string | null>(null);
@@ -126,9 +145,102 @@ export default function AppointmentActions({
     [medicines]
   );
   const actionsLocked = isCompletedLocal;
+  const draftStorageKey = useMemo(
+    () => `vet_appointment_draft:${vetId}:${appointmentId}`,
+    [vetId, appointmentId]
+  );
+
+  const persistDraft = (overrides: Partial<AppointmentDraft> = {}) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const snapshot: AppointmentDraft = {
+      selectedPetId,
+      visitNotes,
+      treatment,
+      selectedMedicineIds,
+      refereeVetId,
+      referralDiagnosis,
+      consultationFee,
+      treatmentCost,
+      medicationCost,
+      dueDate,
+      appointmentDateTime,
+      ...overrides,
+    };
+    localStorage.setItem(draftStorageKey, JSON.stringify(snapshot));
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const rawDraft = localStorage.getItem(draftStorageKey);
+    if (!rawDraft) {
+      return;
+    }
+
+    try {
+      const parsedDraft = JSON.parse(rawDraft) as Partial<AppointmentDraft>;
+
+      if (
+        parsedDraft.selectedPetId !== undefined &&
+        parsedDraft.selectedPetId !== null &&
+        parsedDraft.selectedPetId !== selectedPetId
+      ) {
+        return;
+      }
+
+      if (typeof parsedDraft.visitNotes === "string") {
+        setVisitNotes(parsedDraft.visitNotes);
+      }
+      if (typeof parsedDraft.treatment === "string") {
+        setTreatment(parsedDraft.treatment);
+      }
+      if (Array.isArray(parsedDraft.selectedMedicineIds)) {
+        const normalizedIds = parsedDraft.selectedMedicineIds
+          .map((value) => Number.parseInt(String(value), 10))
+          .filter((value) => Number.isInteger(value) && value > 0);
+        setSelectedMedicineIds(Array.from(new Set(normalizedIds)));
+      }
+      if (typeof parsedDraft.referralDiagnosis === "string") {
+        setReferralDiagnosis(parsedDraft.referralDiagnosis);
+      }
+      if (typeof parsedDraft.consultationFee === "string") {
+        setConsultationFee(parsedDraft.consultationFee);
+      }
+      if (typeof parsedDraft.treatmentCost === "string") {
+        setTreatmentCost(parsedDraft.treatmentCost);
+      }
+      if (typeof parsedDraft.medicationCost === "string") {
+        setMedicationCost(parsedDraft.medicationCost);
+      }
+      if (typeof parsedDraft.dueDate === "string") {
+        setDueDate(parsedDraft.dueDate);
+      }
+      if (typeof parsedDraft.appointmentDateTime === "string") {
+        setAppointmentDateTime(parsedDraft.appointmentDateTime);
+      }
+
+      const targetVetIds = new Set(referralTargets.map((target) => target.veterinarianid));
+      if (
+        typeof parsedDraft.refereeVetId === "number" &&
+        targetVetIds.has(parsedDraft.refereeVetId)
+      ) {
+        setRefereeVetId(parsedDraft.refereeVetId);
+      }
+    } catch {
+      // Ignore malformed client drafts.
+    }
+  }, [draftStorageKey, selectedPetId, referralTargets]);
 
   const parseNonNegativeNumber = (value: string, label: string): { value: number | null; error: string | null } => {
-    const parsed = Number.parseFloat(value);
+    const normalizedValue = value.trim();
+    if (normalizedValue === "") {
+      return { value: 0, error: null };
+    }
+    const parsed = Number.parseFloat(normalizedValue.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed < 0) {
       return { value: null, error: `${label} must be a non-negative number.` };
     }
@@ -146,10 +258,6 @@ export default function AppointmentActions({
 
   const submitVisitSummary = async (event: FormEvent) => {
     event.preventDefault();
-    if (actionsLocked) {
-      setVisitError("Appointment is already completed. Visit summary is locked.");
-      return;
-    }
 
     const normalizedNotes = visitNotes.trim();
     if (!normalizedNotes) {
@@ -160,27 +268,14 @@ export default function AppointmentActions({
     setVisitError(null);
     setVisitMessage(null);
     setVisitSaving(true);
-
-    const { error } = await postVetAction(`/vet/appointments/${appointmentId}/visit-summary`, {
-      vetId,
-      notes: normalizedNotes,
-    });
-
+    setVisitNotes(normalizedNotes);
+    persistDraft({ visitNotes: normalizedNotes });
     setVisitSaving(false);
-    if (error) {
-      setVisitError(error);
-      return;
-    }
-    setVisitMessage("Visit summary saved.");
-    router.refresh();
+    setVisitMessage("Visit summary draft saved. It will be committed on Complete visit.");
   };
 
   const submitPrescription = async (event: FormEvent) => {
     event.preventDefault();
-    if (actionsLocked) {
-      setPrescriptionError("Appointment is already completed. Prescription is locked.");
-      return;
-    }
     if (!selectedPetId) {
       setPrescriptionError("Select a pet before creating a prescription.");
       return;
@@ -195,32 +290,18 @@ export default function AppointmentActions({
     setPrescriptionError(null);
     setPrescriptionMessage(null);
     setPrescriptionSaving(true);
-
-    const { error } = await postVetAction(`/vet/appointments/${appointmentId}/prescriptions`, {
-      vetId,
-      petId: selectedPetId,
+    setTreatment(normalizedTreatment);
+    persistDraft({
+      selectedPetId,
       treatment: normalizedTreatment,
-      medicineIds: selectedMedicineIds,
+      selectedMedicineIds,
     });
-
     setPrescriptionSaving(false);
-    if (error) {
-      setPrescriptionError(error);
-      return;
-    }
-
-    setPrescriptionMessage("Prescription saved.");
-    setTreatment("");
-    setSelectedMedicineIds([]);
-    router.refresh();
+    setPrescriptionMessage("Prescription draft saved. It will be committed on Complete visit.");
   };
 
   const submitReferral = async (event: FormEvent) => {
     event.preventDefault();
-    if (actionsLocked) {
-      setReferralError("Appointment is already completed. Referral is locked.");
-      return;
-    }
     if (!refereeVetId) {
       setReferralError("Select a referee veterinarian.");
       return;
@@ -235,22 +316,14 @@ export default function AppointmentActions({
     setReferralError(null);
     setReferralMessage(null);
     setReferralSaving(true);
-
-    const { error } = await postVetAction("/vet/referrals", {
-      vetId,
+    setReferralDiagnosis(normalizedDiagnosis);
+    persistDraft({
+      selectedPetId,
       refereeVetId,
-      diagnosis: normalizedDiagnosis,
+      referralDiagnosis: normalizedDiagnosis,
     });
-
     setReferralSaving(false);
-    if (error) {
-      setReferralError(error);
-      return;
-    }
-
-    setReferralMessage("Referral created.");
-    setReferralDiagnosis("");
-    router.refresh();
+    setReferralMessage("Referral draft saved. It will be committed on Complete visit.");
   };
 
   const submitCompletion = async (event: FormEvent) => {
@@ -278,8 +351,18 @@ export default function AppointmentActions({
       return;
     }
 
-    if (!visitNotes.trim() && !defaultVisitNotes.trim()) {
-      setCompletionError("Visit summary is required before completion.");
+    const normalizedTreatment = treatment.trim();
+    const normalizedReferralDiagnosis = referralDiagnosis.trim();
+    if (normalizedTreatment && !selectedPetId) {
+      setCompletionError("Select a pet before completing with prescription.");
+      return;
+    }
+    if (selectedMedicineIds.length > 0 && !normalizedTreatment) {
+      setCompletionError("Treatment is required when medicines are selected.");
+      return;
+    }
+    if (normalizedReferralDiagnosis && !refereeVetId) {
+      setCompletionError("Select a referee veterinarian for referral.");
       return;
     }
 
@@ -287,9 +370,38 @@ export default function AppointmentActions({
     setCompletionMessage(null);
     setCompletionSaving(true);
 
-    const { data, error } = await postVetAction<{ message?: string }>(`/vet/appointments/${appointmentId}/complete`, {
+    const normalizedNotes =
+      visitNotes.trim() ||
+      defaultVisitNotes.trim() ||
+      `Visit completed on ${new Date().toLocaleDateString("tr-TR")}.`;
+    const normalizedDateTime = appointmentDateTime.trim();
+    const requestedFollowUpDateTime =
+      normalizedDateTime && normalizedDateTime !== defaultAppointmentDateTime
+        ? normalizedDateTime
+        : null;
+    persistDraft({
+      selectedPetId,
+      visitNotes: normalizedNotes,
+      treatment: normalizedTreatment,
+      selectedMedicineIds,
+      refereeVetId,
+      referralDiagnosis: normalizedReferralDiagnosis,
+      consultationFee,
+      treatmentCost,
+      medicationCost,
+      dueDate,
+      appointmentDateTime: normalizedDateTime,
+    });
+
+    const { data, error } = await postVetAction<FinalizeResponse>(`/vet/appointments/${appointmentId}/finalize`, {
       vetId,
-      notes: visitNotes.trim() || null,
+      notes: normalizedNotes,
+      newDateTime: requestedFollowUpDateTime,
+      petId: selectedPetId,
+      treatment: normalizedTreatment || null,
+      medicineIds: selectedMedicineIds,
+      refereeVetId: normalizedReferralDiagnosis ? refereeVetId ?? null : null,
+      referralDiagnosis: normalizedReferralDiagnosis || null,
       consultationFee: consultationFeeResult.value,
       treatmentCost: treatmentCostResult.value,
       medicationCost: medicationCostResult.value,
@@ -302,17 +414,28 @@ export default function AppointmentActions({
       return;
     }
 
-    setCompletionMessage(data?.message ?? "Appointment completed and bill generated.");
+    const completionDetails: string[] = [];
+    if (data?.prescription) {
+      completionDetails.push("prescription");
+    }
+    if (data?.referral) {
+      completionDetails.push("referral");
+    }
+    if (data?.follow_up_appointment) {
+      completionDetails.push("follow-up appointment");
+    }
+    const detailSuffix =
+      completionDetails.length > 0 ? ` Created: ${completionDetails.join(", ")}.` : "";
+    setCompletionMessage((data?.message ?? "Appointment finalized successfully.") + detailSuffix);
     setIsCompletedLocal(true);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(draftStorageKey);
+    }
     router.refresh();
   };
 
   const submitReschedule = async (event: FormEvent) => {
     event.preventDefault();
-    if (actionsLocked) {
-      setRescheduleError("Appointment is already completed. Reschedule is locked.");
-      return;
-    }
     if (!appointmentDateTime.trim()) {
       setRescheduleError("New appointment date/time is required.");
       return;
@@ -321,30 +444,23 @@ export default function AppointmentActions({
     setRescheduleError(null);
     setRescheduleMessage(null);
     setRescheduleSaving(true);
-
-    const { data, error } = await postVetAction<{ message?: string }>(
-      `/vet/appointments/${appointmentId}/reschedule`,
-      {
-        vetId,
-        newDateTime: appointmentDateTime,
-      }
-    );
-
+    persistDraft({
+      selectedPetId,
+      appointmentDateTime: appointmentDateTime.trim(),
+    });
     setRescheduleSaving(false);
-    if (error) {
-      setRescheduleError(error);
-      return;
-    }
-
-    setRescheduleMessage(data?.message ?? "Appointment rescheduled.");
-    router.refresh();
+    setRescheduleMessage("Reschedule draft saved. It will be committed on Complete visit.");
   };
 
   return (
     <>
       <section className={styles.card}>
         <h2 className={styles.pageTitle}>Create Visit Record</h2>
-        {actionsLocked ? <p className={styles.pageSubtitle}>Appointment completed. Actions are locked.</p> : null}
+        {actionsLocked ? (
+          <p className={styles.pageSubtitle}>
+            Appointment is completed. You can still edit drafts, but completion is locked.
+          </p>
+        ) : null}
         <form onSubmit={submitVisitSummary} className={`${styles.formRow} ${styles.mt1}`}>
           <div className={styles.formGroup} style={{ minWidth: "100%" }}>
             <label className={styles.formLabel}>Diagnosis / Symptoms / Follow-up notes</label>
@@ -354,11 +470,11 @@ export default function AppointmentActions({
               value={visitNotes}
               onChange={(event) => setVisitNotes(event.target.value)}
               placeholder="Visit summary notes"
-              disabled={actionsLocked}
+              disabled={visitSaving}
             />
           </div>
-          <button type="submit" className={styles.btn} disabled={visitSaving || actionsLocked}>
-            {visitSaving ? "Saving..." : "Save visit summary"}
+          <button type="submit" className={styles.btn} disabled={visitSaving}>
+            {visitSaving ? "Saving..." : "Save visit summary draft"}
           </button>
         </form>
         {visitMessage ? <p className={styles.tileSub}>{visitMessage}</p> : null}
@@ -375,11 +491,11 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={appointmentDateTime}
               onChange={(event) => setAppointmentDateTime(event.target.value)}
-              disabled={actionsLocked || rescheduleSaving}
+              disabled={rescheduleSaving}
             />
           </div>
-          <button type="submit" className={styles.btn} disabled={actionsLocked || rescheduleSaving}>
-            {rescheduleSaving ? "Saving..." : "Reschedule"}
+          <button type="submit" className={styles.btn} disabled={rescheduleSaving}>
+            {rescheduleSaving ? "Saving..." : "Save reschedule draft"}
           </button>
         </form>
         {rescheduleMessage ? <p className={styles.tileSub}>{rescheduleMessage}</p> : null}
@@ -397,7 +513,7 @@ export default function AppointmentActions({
               value={treatment}
               onChange={(event) => setTreatment(event.target.value)}
               placeholder="Treatment plan"
-              disabled={actionsLocked}
+              disabled={prescriptionSaving}
             />
           </div>
           <div className={styles.formGroup} style={{ minWidth: "100%" }}>
@@ -427,7 +543,7 @@ export default function AppointmentActions({
                             type="checkbox"
                             checked={selectedMedicineIds.includes(medicine.medicineid)}
                             onChange={() => toggleMedicine(medicine.medicineid)}
-                            disabled={actionsLocked}
+                            disabled={prescriptionSaving}
                           />
                         </td>
                         <td>{medicine.name}</td>
@@ -440,8 +556,8 @@ export default function AppointmentActions({
               </table>
             </div>
           </div>
-          <button type="submit" className={styles.btn} disabled={prescriptionSaving || actionsLocked || !selectedPetId}>
-            {prescriptionSaving ? "Saving..." : "Save prescription"}
+          <button type="submit" className={styles.btn} disabled={prescriptionSaving || !selectedPetId}>
+            {prescriptionSaving ? "Saving..." : "Save prescription draft"}
           </button>
         </form>
         {prescriptionMessage ? <p className={styles.tileSub}>{prescriptionMessage}</p> : null}
@@ -456,9 +572,18 @@ export default function AppointmentActions({
             <select
               className={styles.inputControl}
               value={refereeVetId ?? ""}
-              onChange={(event) => setRefereeVetId(Number.parseInt(event.target.value, 10))}
-              disabled={actionsLocked}
+              onChange={(event) => {
+                const rawValue = event.target.value;
+                if (!rawValue) {
+                  setRefereeVetId(null);
+                  return;
+                }
+                const parsedValue = Number.parseInt(rawValue, 10);
+                setRefereeVetId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
+              }}
+              disabled={referralSaving}
             >
+              <option value="">No referral target selected</option>
               {referralTargets.map((target) => (
                 <option key={target.veterinarianid} value={target.veterinarianid}>
                   {target.veterinarian_name} · {target.branch_name}
@@ -474,15 +599,15 @@ export default function AppointmentActions({
               value={referralDiagnosis}
               onChange={(event) => setReferralDiagnosis(event.target.value)}
               placeholder="Diagnosis summary for referral"
-              disabled={actionsLocked}
+              disabled={referralSaving}
             />
           </div>
           <button
             type="submit"
             className={styles.btn}
-            disabled={referralSaving || actionsLocked || referralTargets.length === 0 || !refereeVetId}
+            disabled={referralSaving || referralTargets.length === 0 || !refereeVetId}
           >
-            {referralSaving ? "Saving..." : "Create referral"}
+            {referralSaving ? "Saving..." : "Save referral draft"}
           </button>
         </form>
         {referralMessage ? <p className={styles.tileSub}>{referralMessage}</p> : null}
@@ -498,7 +623,7 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={consultationFee}
               onChange={(event) => setConsultationFee(event.target.value)}
-              disabled={actionsLocked}
+              disabled={completionSaving}
             />
           </div>
           <div className={styles.formGroup}>
@@ -507,7 +632,7 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={treatmentCost}
               onChange={(event) => setTreatmentCost(event.target.value)}
-              disabled={actionsLocked}
+              disabled={completionSaving}
             />
           </div>
           <div className={styles.formGroup}>
@@ -516,7 +641,7 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={medicationCost}
               onChange={(event) => setMedicationCost(event.target.value)}
-              disabled={actionsLocked}
+              disabled={completionSaving}
             />
           </div>
           <div className={styles.formGroup}>
@@ -526,10 +651,10 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
-              disabled={actionsLocked}
+              disabled={completionSaving}
             />
           </div>
-          <button type="submit" className={styles.btn} disabled={completionSaving || actionsLocked}>
+          <button type="submit" className={styles.btn} disabled={completionSaving}>
             {completionSaving ? "Completing..." : "Complete visit"}
           </button>
         </form>

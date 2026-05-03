@@ -13,6 +13,8 @@ type VetDashboardProfile = {
 
 type VetDashboardMetrics = {
   todays_appointments: number;
+  upcoming_appointments: number;
+  total_appointments: number;
   pending_documentation: number;
 };
 
@@ -25,6 +27,7 @@ type VetScheduleItem = {
 };
 
 type VetHomeDashboardResponse = {
+  selected_date: string;
   profile: VetDashboardProfile;
   metrics: VetDashboardMetrics;
   today_schedule: VetScheduleItem[];
@@ -53,6 +56,21 @@ function formatClock(value: string): string {
   return parsed.toLocaleTimeString("tr-TR", {
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatDateLabel(value: string | undefined): string {
+  if (!value) {
+    return "selected day";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   });
 }
 
@@ -185,12 +203,15 @@ export default function HomePage() {
   const branchTitle = vetDashboardData?.profile.branch_name ?? "No branch assigned";
   const branchSubtitle = vetDashboardData?.profile.branch_location ?? "Branch location not available";
   const todaysAppointments = vetDashboardData?.metrics.todays_appointments ?? 0;
+  const upcomingAppointments = vetDashboardData?.metrics.upcoming_appointments ?? 0;
+  const totalAppointments = vetDashboardData?.metrics.total_appointments ?? 0;
   const pendingDocumentation = vetDashboardData?.metrics.pending_documentation ?? 0;
   const todaySchedule = vetDashboardData?.today_schedule ?? [];
+  const selectedDateLabel = formatDateLabel(vetDashboardData?.selected_date);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8 font-sans transition-colors duration-300">
-      <div className="max-w-5xl mx-auto">
+      <div className={styles.dashboardContainer}>
 
         {/* Header Section */}
         <header className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 sm:p-8 border border-gray-100 dark:border-gray-700 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -232,179 +253,182 @@ export default function HomePage() {
         </header>
 
         {isVet ? (
-          <>
-            <section className={styles.hero}>
-              <div className={styles.card}>
-                <h1>Your day is ready, {vetName}</h1>
-                <p className={styles.sub}>
-                  Let's quickly check your appointments and notes, then jump into records and vaccinations.
-                </p>
-                <div className={`${styles.kpiRow} ${styles.mt2}`}>
-                  <div className={styles.kpi}>
-                    <div className={styles.label}>Today&apos;s appointments</div>
-                    <div className={styles.value}>{todaysAppointments}</div>
+          <div className={styles.dashboardLayout}>
+            <div className={styles.dashboardMainColumn}>
+              <section className={styles.hero}>
+                <div className={styles.card}>
+                  <h1>Your day is ready, {vetName}</h1>
+                  <p className={styles.sub}>
+                    Let&apos;s quickly check your appointments and notes, then jump into records and vaccinations.
+                  </p>
+                  <div className={`${styles.kpiRow} ${styles.mt2}`}>
+                    <div className={styles.kpi}>
+                      <div className={styles.label}>Today&apos;s appointments</div>
+                      <div className={styles.value}>{todaysAppointments}</div>
+                    </div>
+                    <div className={styles.kpi}>
+                      <div className={styles.label}>Upcoming appointments</div>
+                      <div className={styles.value}>{upcomingAppointments}</div>
+                    </div>
+                    <div className={styles.kpi}>
+                      <div className={styles.label}>Total appointments</div>
+                      <div className={styles.value}>{totalAppointments}</div>
+                    </div>
+                    <div className={styles.kpi}>
+                      <div className={styles.label}>Pending documentation</div>
+                      <div className={styles.value}>{pendingDocumentation}</div>
+                    </div>
                   </div>
-                  <div className={styles.kpi}>
-                    <div className={styles.label}>Pending documentation</div>
-                    <div className={styles.value}>{pendingDocumentation}</div>
+                  {vetDashboardError ? <p className={styles.errorText}>{vetDashboardError}</p> : null}
+                </div>
+                <div className={`${styles.card} ${styles.quickActionsCard}`}>
+                  <h2 className={styles.quickActionsTitle}>Quick actions</h2>
+                  <div className={styles.quickActionsList}>
+                    <Link href="/vet/appointments" className={`${styles.btn} ${styles.block}`}>
+                      Open appointments
+                    </Link>
+                    <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost} ${styles.block}`}>
+                      Create visit record
+                    </Link>
+                    <Link
+                      href="/vet/timeline?openReferral=1#create-referral"
+                      className={`${styles.btn} ${styles.ghost} ${styles.block}`}
+                    >
+                      Create referral
+                    </Link>
                   </div>
                 </div>
-                {vetDashboardError ? <p className={styles.errorText}>{vetDashboardError}</p> : null}
-              </div>
-              <div className={styles.card}>
-                <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-                <Link href="/vet/appointments" className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                  Open appointments
-                </Link>
-                <a href="#" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                  Create visit record
-                </a>
-                <Link
-                  href="/vet/timeline?openReferral=1#create-referral"
-                  className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
-                >
-                  Create referral
-                </Link>
-              </div>
-            </section>
-          </>
-        ) : null}
+              </section>
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div
-            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
-              isVet ? "border-2 border-blue-300 dark:border-blue-700" : "border border-blue-100 dark:border-gray-700"
-            }`}
-            onClick={isVet ? () => goToVetPage("appointments") : undefined}
-            role={isVet ? "button" : undefined}
-            tabIndex={isVet ? 0 : undefined}
-            onKeyDown={
-              isVet
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      goToVetPage("appointments");
-                    }
-                  }
-                : undefined
-            }
-          >
-            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <span className="text-xl">📅</span>
-            </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {isVet
-                ? "View your schedule and open appointments to create visit records."
-                : "View and manage your upcoming schedule."}
-            </p>
-          </div>
-
-          <div
-            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
-              isVet ? "border-2 border-emerald-300 dark:border-emerald-700" : "border border-emerald-100 dark:border-gray-700"
-            }`}
-            onClick={isVet ? () => goToVetPage("timeline") : undefined}
-            role={isVet ? "button" : undefined}
-            tabIndex={isVet ? 0 : undefined}
-            onKeyDown={
-              isVet
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      goToVetPage("timeline");
-                    }
-                  }
-                : undefined
-            }
-          >
-            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <span className="text-xl">🐾</span>
-            </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Medical Records" : "Patients"}</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {isVet
-                ? "Access pet history, diagnoses, prescriptions, vaccinations, and referrals."
-                : "Access medical records and history."}
-            </p>
-          </div>
-
-          <div
-            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
-              isVet ? "border-2 border-violet-300 dark:border-violet-700" : "border border-purple-100 dark:border-gray-700"
-            }`}
-            onClick={isVet ? () => goToVetPage("dashboard") : undefined}
-            role={isVet ? "button" : undefined}
-            tabIndex={isVet ? 0 : undefined}
-            onKeyDown={
-              isVet
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      goToVetPage("dashboard");
-                    }
-                  }
-                : undefined
-            }
-          >
-            <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <span className="text-xl">{isVet ? "💉" : "📦"}</span>
-            </div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Vaccinations" : "Inventory"}</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {isVet ? "Review vaccination plans, due records, and follow-up items." : "Check stock and order supplies."}
-            </p>
-          </div>
-        </div>
-
-        {isVet ? (
-          <section className={`${styles.card} ${styles.mt2}`}>
-            <h2 className={styles.pageTitle}>Today&apos;s schedule</h2>
-            <p className={styles.pageSubtitle}>{branchTitle}</p>
-            <p className={styles.pageSubtitle}>{branchSubtitle}</p>
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Pet</th>
-                    <th>Owner</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todaySchedule.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className={styles.emptyCell}>
-                        No appointments found for the selected date.
-                      </td>
-                    </tr>
-                  ) : (
-                    todaySchedule.map((appointment) => (
-                      <tr key={appointment.appointmentid}>
-                        <td>{formatClock(appointment.datetime)}</td>
-                        <td>{appointment.pet_name}</td>
-                        <td>{appointment.owner_name}</td>
-                        <td>
-                          <span className={getSchedulePillClass(appointment.status)}>
-                            {appointment.status}
-                          </span>
-                        </td>
-                        <td>
-                          <Link href="/vet/appointments">
-                            {appointment.status === "Completed" ? "View" : "Open"}
-                          </Link>
-                        </td>
+              <section className={`${styles.card} ${styles.mt2}`}>
+                <h2 className={styles.pageTitle}>Today&apos;s schedule</h2>
+                <p className={styles.pageSubtitle}>{branchTitle}</p>
+                <p className={styles.pageSubtitle}>{branchSubtitle}</p>
+                <p className={styles.pageSubtitle}>Selected date: {selectedDateLabel}</p>
+                <div className={styles.tableWrap}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Pet</th>
+                        <th>Owner</th>
+                        <th>Status</th>
+                        <th>Action</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {todaySchedule.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className={styles.emptyCell}>
+                            No appointments found on {selectedDateLabel}.
+                          </td>
+                        </tr>
+                      ) : (
+                        todaySchedule.map((appointment) => (
+                          <tr key={appointment.appointmentid}>
+                            <td>{formatClock(appointment.datetime)}</td>
+                            <td>{appointment.pet_name}</td>
+                            <td>{appointment.owner_name}</td>
+                            <td>
+                              <span className={getSchedulePillClass(appointment.status)}>
+                                {appointment.status}
+                              </span>
+                            </td>
+                            <td>
+                              <Link href="/vet/appointments">
+                                {appointment.status === "Completed" ? "View" : "Open"}
+                              </Link>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
-          </section>
-        ) : null}
+
+            <aside className={styles.dashboardSideColumn}>
+              <div
+                className={`${styles.navCard} bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer border-2 border-blue-300 dark:border-blue-700`}
+                onClick={() => goToVetPage("appointments")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    goToVetPage("appointments");
+                  }
+                }}
+              >
+                <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <span className="text-xl">📅</span>
+                </div>
+                <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  View your schedule and open appointments to create visit records.
+                </p>
+              </div>
+
+              <div
+                className={`${styles.navCard} bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer border-2 border-emerald-300 dark:border-emerald-700`}
+                onClick={() => goToVetPage("timeline")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    goToVetPage("timeline");
+                  }
+                }}
+              >
+                <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <span className="text-xl">🐾</span>
+                </div>
+                <h3 className="font-bold text-gray-900 dark:text-white mb-2">Medical Records</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  Access pet history, diagnoses, prescriptions, vaccinations, and referrals.
+                </p>
+              </div>
+
+              <div
+                className={`${styles.navCard} bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer border-2 border-violet-300 dark:border-violet-700`}
+                onClick={() => goToVetPage("dashboard")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    goToVetPage("dashboard");
+                  }
+                }}
+              >
+                <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <span className="text-xl">💉</span>
+                </div>
+                <h3 className="font-bold text-gray-900 dark:text-white mb-2">Vaccinations</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  Review vaccination plans, due records, and follow-up items.
+                </p>
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-blue-100 dark:border-gray-700">
+              <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">View and manage your upcoming schedule.</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-emerald-100 dark:border-gray-700">
+              <h3 className="font-bold text-gray-900 dark:text-white mb-2">Patients</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Access medical records and history.</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-purple-100 dark:border-gray-700">
+              <h3 className="font-bold text-gray-900 dark:text-white mb-2">Inventory</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Check stock and order supplies.</p>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

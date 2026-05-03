@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import styles from "../dashboard/vet_dashboard_page.module.css";
 import LogoutMenuLink from "../logout_menu_link";
 import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
+import IncomingReferralActions from "./incoming_referral_actions";
 
 type VetAppointmentsProfile = {
   veterinarian_name: string;
@@ -27,9 +28,15 @@ type VetAppointmentItem = {
 type VetIncomingReferralItem = {
   referraldate: string;
   diagnosis: string | null;
+  diagnosis_raw: string | null;
+  approved: boolean;
   referrer_vet_id: number;
   referrer_name: string;
   referrer_branch_name: string;
+  inferred_owner_id: number | null;
+  inferred_owner_name: string | null;
+  inferred_vaccination_plan_id: number | null;
+  inferred_appointment_type: string | null;
 };
 
 type VetAppointmentsResponse = {
@@ -95,6 +102,14 @@ function formatClock(value: string): string {
   });
 }
 
+function isSameCalendarDay(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
 function getStatusPillClass(status: VetAppointmentItem["status"]): string {
   if (status === "Completed") {
     return `${styles.pill} ${styles.pillOk}`;
@@ -156,9 +171,17 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
 
   const initials = getInitials(data.profile.veterinarian_name);
   const vetName = withDoctorPrefix(data.profile.veterinarian_name);
-  const todaysAppointmentsCount = data.appointments.length;
-  const pendingDocumentationCount = data.appointments.filter((appointment) => appointment.status === "Pending").length;
-  const schedulePreview = data.appointments.slice(0, 6);
+  const now = new Date();
+  const todayAppointments = data.appointments.filter((appointment) => {
+    const parsedDate = new Date(appointment.datetime);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return false;
+    }
+    return isSameCalendarDay(parsedDate, now);
+  });
+  const todaysAppointmentsCount = todayAppointments.length;
+  const pendingDocumentationCount = todayAppointments.filter((appointment) => appointment.status === "Pending").length;
+  const schedulePreview = todayAppointments.slice(0, 6);
 
   return (
     <main className={styles.page}>
@@ -368,12 +391,13 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                       <th>From vet</th>
                       <th>Branch</th>
                       <th>Diagnosis</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.incoming_referrals.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className={styles.emptyCell}>
+                        <td colSpan={5} className={styles.emptyCell}>
                           No incoming referral found.
                         </td>
                       </tr>
@@ -384,6 +408,12 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                           <td>{referral.referrer_name}</td>
                           <td>{referral.referrer_branch_name}</td>
                           <td>{referral.diagnosis ?? "-"}</td>
+                          <td>
+                            <IncomingReferralActions
+                              vetId={selectedVetId}
+                              referral={referral}
+                            />
+                          </td>
                         </tr>
                       ))
                     )}
