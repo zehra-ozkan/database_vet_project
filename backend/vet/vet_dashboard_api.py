@@ -66,7 +66,9 @@ def vet_get_dashboard():
         cursor.execute(
             """
             SELECT
-                COUNT(*)::int AS todays_appointments,
+                COUNT(*) FILTER (WHERE a.datetime::date = %s)::int AS todays_appointments,
+                COUNT(*) FILTER (WHERE a.datetime > NOW())::int AS upcoming_appointments,
+                COUNT(*)::int AS total_appointments,
                 COUNT(*) FILTER (
                     WHERE vs.appointmentid IS NULL
                       AND a.datetime <= NOW()
@@ -74,9 +76,8 @@ def vet_get_dashboard():
             FROM appointment a
             LEFT JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             WHERE a.veterinarianid = %s
-              AND a.datetime::date = %s
             """,
-            (vet_id, selected_date),
+            (selected_date, vet_id),
         )
         metrics = cursor.fetchone()
 

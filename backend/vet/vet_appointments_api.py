@@ -28,6 +28,25 @@ def _vet_parse_optional_int(raw_value):
     return parsed_value
 
 
+def _vet_parse_positive_int_list(raw_values, field_name):
+    """Parse a list of positive integers."""
+    if raw_values is None:
+        return []
+    if not isinstance(raw_values, list):
+        raise ValueError(f"{field_name} must be an array.")
+
+    parsed_values = []
+    for raw_value in raw_values:
+        try:
+            parsed_value = int(raw_value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} must contain positive integers.")
+        if parsed_value <= 0:
+            raise ValueError(f"{field_name} must contain positive integers.")
+        parsed_values.append(parsed_value)
+    return parsed_values
+
+
 def _vet_parse_required_text(raw_value, field_name):
     """Validate required non-empty string values."""
     if not isinstance(raw_value, str) or not raw_value.strip():
@@ -820,6 +839,256 @@ def vet_reschedule_appointment(appointment_id):
                 "appointment": _vet_serialize_row(updated_appointment),
             }
         )
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return _vet_error_response(exc)
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@vet_appointments_bp.route("/api/vet/appointments/<int:appointment_id>/finalize", methods=["POST"])
+def vet_finalize_appointment(appointment_id):
+    """Finalize draft clinical actions and complete appointment in one transaction."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        vet_id = _vet_resolve_vet_id(payload)
+        notes_raw = payload.get("notes")
+        if isinstance(notes_raw, str) and notes_raw.strip():
+            notes = notes_raw.strip()
+        else:
+            notes = "Visit completed."
+        consultation_fee = payload.get("consultationFee", 0)
+        treatment_cost = payload.get("treatmentCost", 0)
+        medication_cost = payload.get("medicationCost", 0)
+        due_date = payload.get("dueDate")
+
+        selected_pet_id = _vet_parse_optional_int(payload.get("petId"))
+        treatment_raw = payload.get("treatment")
+        treatment = treatment_raw.strip() if isinstance(treatment_raw, str) and treatment_raw.strip() else None
+        medicine_ids = _vet_parse_positive_int_list(payload.get("medicineIds"), "medicineIds")
+
+        referee_vet_id = _vet_parse_optional_int(payload.get("refereeVetId"))
+        referral_diagnosis_raw = payload.get("referralDiagnosis")
+        referral_diagnosis = (
+            referral_diagnosis_raw.strip()
+            if isinstance(referral_diagnosis_raw, str) and referral_diagnosis_raw.strip()
+            else None
+        )
+
+        new_datetime_raw = payload.get("newDateTime")
+        parsed_datetime = None
+        if isinstance(new_datetime_raw, str) and new_datetime_raw.strip():
+            normalized_for_parse = new_datetime_raw.strip().replace("Z", "+00:00")
+            parsed_datetime = datetime.fromisoformat(normalized_for_parse)
+            if parsed_datetime.tzinfo is not None:
+                parsed_datetime = parsed_datetime.replace(tzinfo=None)
+            parsed_datetime = parsed_datetime.replace(second=0, microsecond=0)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if medicine_ids and not treatment:
+        return jsonify({"error": "treatment is required when medicineIds are provided."}), 400
+    if treatment and selected_pet_id is None:
+        return jsonify({"error": "petId is required when treatment is provided."}), 400
+    if (referee_vet_id is None) != (referral_diagnosis is None):
+        return jsonify({"error": "refereeVetId and referralDiagnosis must be provided together."}), 400
+    if referee_vet_id is not None and referee_vet_id == vet_id:
+        return jsonify({"error": "refereeVetId must be different from current veterinarian."}), 400
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = vet_get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        appointment = _vet_fetch_appointment_context(cursor, appointment_id, vet_id)
+        if not appointment:
+            return jsonify({"error": "Appointment not found for this veterinarian."}), 404
+
+        cursor.execute(
+            """
+            SELECT b.billno
+            FROM bill b
+            WHERE b.appointmentid = %s
+            LIMIT 1
+            """,
+            (appointment_id,),
+        )
+        existing_bill = cursor.fetchone()
+        if existing_bill:
+            return jsonify({"error": "Appointment is already completed."}), 409
+
+        follow_up_appointment = None
+        if parsed_datetime is not None:
+            current_datetime = appointment["datetime"]
+            if isinstance(current_datetime, datetime):
+                current_datetime = current_datetime.replace(second=0, microsecond=0)
+
+            if current_datetime != parsed_datetime:
+                cursor.execute(
+                    """
+                    INSERT INTO appointment (
+                        atype,
+                        datetime,
+                        vaccinationplanid,
+                        veterinarianid,
+                        petownerid
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING appointmentid, datetime, atype, veterinarianid, petownerid, vaccinationplanid
+                    """,
+                    (
+                        appointment["atype"],
+                        parsed_datetime,
+                        appointment["vaccinationplanid"],
+                        vet_id,
+                        appointment["petownerid"],
+                    ),
+                )
+                follow_up_appointment = cursor.fetchone()
+
+        cursor.execute(
+            """
+            SELECT vs.visitid
+            FROM visitsummary vs
+            WHERE vs.appointmentid = %s
+            ORDER BY vs.visitid DESC
+            LIMIT 1
+            """,
+            (appointment_id,),
+        )
+        existing_summary = cursor.fetchone()
+
+        if existing_summary:
+            cursor.execute(
+                """
+                UPDATE visitsummary
+                SET notes = %s
+                WHERE visitid = %s
+                RETURNING visitid, appointmentid, notes
+                """,
+                (notes, existing_summary["visitid"]),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO visitsummary (appointmentid, notes)
+                VALUES (%s, %s)
+                RETURNING visitid, appointmentid, notes
+                """,
+                (appointment_id, notes),
+            )
+        saved_summary = cursor.fetchone()
+
+        created_prescription = None
+        linked_medicines = []
+        if treatment:
+            owner_pets = _vet_fetch_owner_pets(cursor, int(appointment["petownerid"]))
+            allowed_pet_ids = {int(row["petid"]) for row in owner_pets}
+            if selected_pet_id not in allowed_pet_ids:
+                return jsonify({"error": "Selected pet does not belong to this appointment owner."}), 409
+
+            cursor.execute(
+                """
+                INSERT INTO prescription (treatment, veterinarianid, petid, prescriptiondate)
+                VALUES (%s, %s, %s, CURRENT_DATE)
+                RETURNING prescriptionid, treatment, veterinarianid, petid, prescriptiondate
+                """,
+                (treatment, vet_id, selected_pet_id),
+            )
+            created_prescription = cursor.fetchone()
+
+            for medicine_id in medicine_ids:
+                cursor.execute(
+                    """
+                    INSERT INTO prescribes (prescriptionid, medicineid)
+                    VALUES (%s, %s)
+                    RETURNING prescriptionid, medicineid
+                    """,
+                    (created_prescription["prescriptionid"], medicine_id),
+                )
+                linked_medicines.append(cursor.fetchone())
+
+        created_referral = None
+        if referee_vet_id is not None and referral_diagnosis is not None:
+            cursor.execute(
+                """
+                SELECT v.veterinarianid
+                FROM veterinarian v
+                WHERE v.veterinarianid = %s
+                """,
+                (referee_vet_id,),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": "Referee veterinarian not found."}), 404
+
+            cursor.execute(
+                """
+                INSERT INTO refers (referrer, referee, referraldate, diagnosis)
+                VALUES (%s, %s, CURRENT_DATE, %s)
+                RETURNING referrer, referee, referraldate, diagnosis
+                """,
+                (vet_id, referee_vet_id, referral_diagnosis),
+            )
+            created_referral = cursor.fetchone()
+
+        cursor.execute("SELECT COALESCE(MAX(b.billno), 0) + 1 AS next_bill_no FROM bill b")
+        next_bill_no = int(cursor.fetchone()["next_bill_no"])
+
+        cursor.execute(
+            """
+            INSERT INTO bill (
+                billno,
+                appointmentid,
+                consultationfee,
+                treatmentcost,
+                medicationcost,
+                duedate,
+                paid,
+                payerid
+            )
+            VALUES (
+                %s,
+                %s,
+                %s::numeric,
+                %s::numeric,
+                %s::numeric,
+                COALESCE(%s::date, CURRENT_DATE + INTERVAL '7 days'),
+                FALSE,
+                %s
+            )
+            RETURNING billno, appointmentid, consultationfee, treatmentcost, medicationcost, duedate, paid
+            """,
+            (
+                next_bill_no,
+                appointment_id,
+                consultation_fee,
+                treatment_cost,
+                medication_cost,
+                due_date,
+                appointment["petownerid"],
+            ),
+        )
+        created_bill = cursor.fetchone()
+        conn.commit()
+
+        return jsonify(
+            {
+                "message": "Appointment finalized successfully.",
+                "follow_up_appointment": _vet_serialize_row(follow_up_appointment),
+                "visit_summary": _vet_serialize_row(saved_summary),
+                "prescription": _vet_serialize_row(created_prescription),
+                "linked_medicines": vet_serialize_records(linked_medicines),
+                "referral": _vet_serialize_row(created_referral),
+                "bill": _vet_serialize_row(created_bill),
+            }
+        ), 201
     except Exception as exc:
         if conn:
             conn.rollback()
