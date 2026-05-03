@@ -1,27 +1,42 @@
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetLoggedInVetId } from "../vet_http";
 
-type VetVaccinationProfile = {
+type VetDashboardProfile = {
   veterinarian_name: string;
   branch_name: string | null;
+  branch_location: string | null;
 };
 
-type VetVaccinationItem = {
+type VetDashboardMetrics = {
+  todays_appointments: number;
+  pending_documentation: number;
+};
+
+type VetScheduleItem = {
+  appointmentid: number;
+  datetime: string;
   pet_name: string;
-  vaccine_name: string;
-  shotdate: string | null;
-  nextduedate: string | null;
-  admin_vet_name: string;
-  vaccination_status: string;
+  owner_name: string;
+  status: "Completed" | "Upcoming" | "Pending";
 };
 
-type VetVaccinationDashboardResponse = {
-  profile: VetVaccinationProfile;
-  vaccination_records: VetVaccinationItem[];
+type VetHomeDashboardResponse = {
+  profile: VetDashboardProfile;
+  metrics: VetDashboardMetrics;
+  today_schedule: VetScheduleItem[];
 };
+
+const vetDashboardApiBaseCandidates = Array.from(
+  new Set(
+    [process.env.NEXT_PUBLIC_API_URL, "http://localhost:5000/api"]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.replace(/\/$/, ""))
+  )
+);
 
 function withDoctorPrefix(name: string): string {
   if (name.toLowerCase().startsWith("dr.")) {
@@ -30,245 +45,369 @@ function withDoctorPrefix(name: string): string {
   return `Dr. ${name}`;
 }
 
-function getInitials(name: string): string {
-  const parts = name
-    .replace(/^dr\.?\s*/i, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) {
-    return "VT";
-  }
-  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
-  return initials.join("");
-}
-
-function formatShortDate(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
+function formatClock(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return "-";
+    return "--:--";
   }
-  return parsed.toLocaleDateString("tr-TR", {
-    day: "2-digit",
-    month: "short",
+  return parsed.toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
-function getVaccinationPillClass(status: string): string {
-  if (status.startsWith("Overdue")) {
-    return `${styles.pill} ${styles.pillDanger}`;
+function getSchedulePillClass(status: VetScheduleItem["status"]): string {
+  if (status === "Completed") {
+    return `${styles.pill} ${styles.pillOk}`;
   }
-  if (status.startsWith("Due in")) {
+  if (status === "Upcoming") {
     return `${styles.pill} ${styles.pillWait}`;
   }
-  return `${styles.pill} ${styles.pillOk}`;
+  return `${styles.pill} ${styles.pillInfo}`;
 }
 
-async function fetchVetVaccinationData(
+async function fetchVetHomeDashboardData(
   vetId: number
-): Promise<{ data: VetVaccinationDashboardResponse | null; error: string | null }> {
-  return vetFetchJson<VetVaccinationDashboardResponse>(`/api/vet/dashboard?vetId=${vetId}`);
-}
+): Promise<{ data: VetHomeDashboardResponse | null; error: string | null }> {
+  let lastError = "Data could not be loaded.";
 
-export default async function VetDashboardPage() {
-  const selectedVetId = await vetGetLoggedInVetId();
-  if (!selectedVetId) {
-    redirect("/home");
+  for (const apiBase of vetDashboardApiBaseCandidates) {
+    try {
+      const response = await fetch(`${apiBase}/vet/dashboard?vetId=${vetId}`, { cache: "no-store" });
+      const payload = (await response.json()) as VetHomeDashboardResponse & { error?: unknown };
+      if (!response.ok) {
+        lastError = typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`;
+        continue;
+      }
+      return { data: payload, error: null };
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error.message;
+      }
+    }
   }
 
-  const homeHref = "/home";
-  const vaccinationsHref = "/vet/vaccinations";
-  const appointmentsHref = "/vet/appointments";
-  const timelineHref = "/vet/timeline";
-  const profileHref = "/vet/profile";
+  return { data: null, error: lastError };
+}
 
-  const { data, error } = await fetchVetVaccinationData(selectedVetId);
+export default function HomePage() {
+  const [userName, setUserName] = useState("");
+  const [isVet, setIsVet] = useState(false);
+  const [vetId, setVetId] = useState<number | null>(null);
+  const [vetDashboardData, setVetDashboardData] = useState<VetHomeDashboardResponse | null>(null);
+  const [vetDashboardError, setVetDashboardError] = useState<string | null>(null);
+  const router = useRouter();
 
-  if (!data) {
+  useEffect(() => {
+    // Check if user is logged in by looking for 'user' in localStorage
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr) as { id?: number | string; name?: string; role?: string };
+        document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
+        setUserName(user.name || "User");
+        const normalizedRole = typeof user.role === "string" ? user.role.trim().toLowerCase() : "";
+        const userIsVet = normalizedRole === "veterinarian" || normalizedRole === "vet";
+        setIsVet(userIsVet);
+
+        if (userIsVet) {
+          const parsedVetId = typeof user.id === "number" ? user.id : Number(user.id);
+          setVetId(Number.isInteger(parsedVetId) && parsedVetId > 0 ? parsedVetId : null);
+        } else {
+          setVetId(null);
+        }
+      } catch {
+        // If JSON parsing fails, redirect back to login
+        router.push("/login");
+      }
+    } else {
+      // Not logged in, redirect to login
+      router.push("/login");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (!isVet || !vetId) {
+      setVetDashboardData(null);
+      setVetDashboardError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadVetDashboardData = async () => {
+      const { data, error } = await fetchVetHomeDashboardData(vetId);
+      if (cancelled) {
+        return;
+      }
+      setVetDashboardData(data);
+      setVetDashboardError(error);
+    };
+
+    void loadVetDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isVet, vetId]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    document.cookie = "session_user=; path=/; max-age=0; samesite=lax";
+    router.push("/login");
+  };
+
+  const goToVetPage = (path: "appointments" | "timeline" | "dashboard") => {
+    if (!isVet || !vetId) {
+      return;
+    }
+    if (path === "dashboard") {
+      router.push("/vet/vaccinations");
+      return;
+    }
+    router.push(`/vet/${path}`);
+  };
+
+  // We can show a simple loading state until the client-side checks finish
+  if (!userName) {
     return (
-      <main className={styles.page}>
-        <div className={styles.container}>
-          <section className={styles.card}>
-            <h1 className={styles.pageTitle}>Vet Vaccinations</h1>
-            <p className={styles.pageSubtitle}>Data load failed.</p>
-            <p className={styles.errorText}>{error}</p>
-          </section>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-pulse flex space-x-2">
+          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+          <div className="w-3 h-3 bg-blue-500 rounded-full animation-delay-200"></div>
+          <div className="w-3 h-3 bg-blue-500 rounded-full animation-delay-400"></div>
         </div>
-      </main>
+      </div>
     );
   }
 
-  const vetName = withDoctorPrefix(data.profile.veterinarian_name);
-  const profileInitials = getInitials(data.profile.veterinarian_name);
-  const branchTitle = data.profile.branch_name ?? "No branch assigned";
-  const vaccineSummary = Array.from(
-    new Set(data.vaccination_records.map((record) => record.vaccine_name))
-  )
-    .slice(0, 3)
-    .join(", ");
-  const overdueVaccinationCount = data.vaccination_records.filter((record) =>
-    record.vaccination_status.startsWith("Overdue")
-  ).length;
-  const vaccinationPreview = data.vaccination_records.slice(0, 6);
+  const vetName = withDoctorPrefix(vetDashboardData?.profile.veterinarian_name ?? userName);
+  const branchTitle = vetDashboardData?.profile.branch_name ?? "No branch assigned";
+  const branchSubtitle = vetDashboardData?.profile.branch_location ?? "Branch location not available";
+  const todaysAppointments = vetDashboardData?.metrics.todays_appointments ?? 0;
+  const pendingDocumentation = vetDashboardData?.metrics.pending_documentation ?? 0;
+  const todaySchedule = vetDashboardData?.today_schedule ?? [];
 
   return (
-    <main className={styles.page}>
-      <div className={`${styles.container} ${styles.pageSplitContainer}`}>
-        <header className={`${styles.headerSplit} ${styles.pageSplitHeader}`}>
-          <div className={styles.headerLeft}>
-            <Link href={homeHref} className={`${styles.brand} ${styles.brandIcon}`} aria-label="Vet home">
-              <div className={styles.mark} />
-              <span className={styles.brandGreeting}>Hello, {vetName}</span>
-            </Link>
-          </div>
-          <div className={styles.headerRight}>
-            <nav className={`${styles.nav} ${styles.navRight}`}>
-              <Link href={appointmentsHref}>Appointments</Link>
-              <Link href={timelineHref}>Medical Records</Link>
-              <Link href={vaccinationsHref} className={styles.active}>
-                Vaccinations
-              </Link>
-            </nav>
-            <div className={styles.headerActions}>
-              <details className={styles.profileDropdown}>
-                <summary className={styles.profileTrigger}>{profileInitials}</summary>
-                <div className={styles.profileMenu}>
-                  <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
-                </div>
-              </details>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8 font-sans transition-colors duration-300">
+      <div className="max-w-5xl mx-auto">
+
+        {/* Header Section */}
+        <header className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 sm:p-8 border border-gray-100 dark:border-gray-700 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
             </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                Hello, {userName}! 👋
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                Welcome back to your VetChain Dashboard.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isVet ? (
+              <Link
+                href="/vet/profile"
+                className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40 rounded-lg font-semibold transition-colors"
+              >
+                My Profile
+              </Link>
+            ) : null}
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-lg font-semibold transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
           </div>
         </header>
 
-        <div className={styles.pageSplit}>
-          <aside className={styles.sideColumn}>
-            <section className={styles.card}>
-              <h1>Vaccination overview</h1>
-              <p className={styles.sub}>
-                Review due and overdue vaccine records before clinical updates.
-              </p>
-              <div className={`${styles.kpiRow} ${styles.mt2}`}>
-                <div className={styles.kpi}>
-                  <div className={styles.label}>Vaccination records</div>
-                  <div className={styles.value}>{data.vaccination_records.length}</div>
+        {isVet ? (
+          <>
+            <section className={styles.hero}>
+              <div className={styles.card}>
+                <h1>Your day is ready, {vetName}</h1>
+                <p className={styles.sub}>
+                  Let's quickly check your appointments and notes, then jump into records and vaccinations.
+                </p>
+                <div className={`${styles.kpiRow} ${styles.mt2}`}>
+                  <div className={styles.kpi}>
+                    <div className={styles.label}>Today&apos;s appointments</div>
+                    <div className={styles.value}>{todaysAppointments}</div>
+                  </div>
+                  <div className={styles.kpi}>
+                    <div className={styles.label}>Pending documentation</div>
+                    <div className={styles.value}>{pendingDocumentation}</div>
+                  </div>
                 </div>
-                <div className={styles.kpi}>
-                  <div className={styles.label}>Overdue items</div>
-                  <div className={styles.value}>{overdueVaccinationCount}</div>
-                </div>
+                {vetDashboardError ? <p className={styles.errorText}>{vetDashboardError}</p> : null}
+              </div>
+              <div className={styles.card}>
+                <h2 className={styles.quickActionsTitle}>Quick actions</h2>
+                <Link href="/vet/appointments" className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
+                  Open appointments
+                </Link>
+                <a href="#" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                  Create visit record
+                </a>
+                <Link
+                  href="/vet/timeline?openReferral=1#create-referral"
+                  className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+                >
+                  Create referral
+                </Link>
               </div>
             </section>
+          </>
+        ) : null}
 
-            <section className={styles.card}>
-              <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                Open appointments
-              </Link>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create visit record
-              </Link>
-              <Link href={timelineHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create referral
-              </Link>
-            </section>
-
-            <section className={styles.card}>
-              <h2 className={styles.pageTitle}>Vaccination queue</h2>
-              <p className={styles.pageSubtitle}>{branchTitle}</p>
-              <div className={styles.tableWrap}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Pet</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vaccinationPreview.length === 0 ? (
-                      <tr>
-                        <td colSpan={2} className={styles.emptyCell}>
-                          No vaccination record found.
-                        </td>
-                      </tr>
-                    ) : (
-                      vaccinationPreview.map((record, index) => (
-                        <tr key={`vaccination-preview-${record.pet_name}-${index}`}>
-                          <td>{record.pet_name}</td>
-                          <td>{record.vaccination_status}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </aside>
-          <div className={styles.splitDivider} aria-hidden />
-
-          <section className={`${styles.card} ${styles.pageSplitMain}`}>
-          <h2 className={styles.pageTitle}>Vaccination Plan &amp; Records</h2>
-          <p className={styles.pageSubtitle}>
-            Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights
-          </p>
-          <div className={styles.vaccinationMetaPanels}>
-            <div className={styles.tile}>
-              <div className={styles.tileTitle}>Plan owner</div>
-              <p className={styles.tileSub}>
-                {vetName} · {branchTitle}
-              </p>
+        {/* Dashboard Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-blue-300 dark:border-blue-700" : "border border-blue-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("appointments") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("appointments");
+                    }
+                  }
+                : undefined
+            }
+          >
+            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <span className="text-xl">📅</span>
             </div>
-            <div className={styles.tile}>
-              <div className={styles.tileTitle}>Current plan</div>
-              <p className={styles.tileSub}>{vaccineSummary || "No vaccine record yet"}</p>
-            </div>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">Appointments</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "View your schedule and open appointments to create visit records."
+                : "View and manage your upcoming schedule."}
+            </p>
           </div>
-          <div className={styles.tableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Pet</th>
-                  <th>Vaccine</th>
-                  <th>Date</th>
-                  <th>Batch</th>
-                  <th>Next due</th>
-                  <th>Admin vet</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.vaccination_records.length === 0 ? (
+
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-emerald-300 dark:border-emerald-700" : "border border-emerald-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("timeline") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("timeline");
+                    }
+                  }
+                : undefined
+            }
+          >
+            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <span className="text-xl">🐾</span>
+            </div>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Medical Records" : "Patients"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet
+                ? "Access pet history, diagnoses, prescriptions, vaccinations, and referrals."
+                : "Access medical records and history."}
+            </p>
+          </div>
+
+          <div
+            className={`bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${
+              isVet ? "border-2 border-violet-300 dark:border-violet-700" : "border border-purple-100 dark:border-gray-700"
+            }`}
+            onClick={isVet ? () => goToVetPage("dashboard") : undefined}
+            role={isVet ? "button" : undefined}
+            tabIndex={isVet ? 0 : undefined}
+            onKeyDown={
+              isVet
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goToVetPage("dashboard");
+                    }
+                  }
+                : undefined
+            }
+          >
+            <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <span className="text-xl">{isVet ? "💉" : "📦"}</span>
+            </div>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-2">{isVet ? "Vaccinations" : "Inventory"}</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {isVet ? "Review vaccination plans, due records, and follow-up items." : "Check stock and order supplies."}
+            </p>
+          </div>
+        </div>
+
+        {isVet ? (
+          <section className={`${styles.card} ${styles.mt2}`}>
+            <h2 className={styles.pageTitle}>Today&apos;s schedule</h2>
+            <p className={styles.pageSubtitle}>{branchTitle}</p>
+            <p className={styles.pageSubtitle}>{branchSubtitle}</p>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={7} className={styles.emptyCell}>
-                      No vaccination records linked to this veterinarian.
-                    </td>
+                    <th>Time</th>
+                    <th>Pet</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
-                ) : (
-                  data.vaccination_records.map((record, index) => (
-                    <tr key={`${record.pet_name}-${record.vaccine_name}-${index}`}>
-                      <td>{record.pet_name}</td>
-                      <td>{record.vaccine_name}</td>
-                      <td>{formatShortDate(record.shotdate)}</td>
-                      <td>-</td>
-                      <td>{formatShortDate(record.nextduedate)}</td>
-                      <td>{record.admin_vet_name}</td>
-                      <td>
-                        <span className={getVaccinationPillClass(record.vaccination_status)}>
-                          {record.vaccination_status}
-                        </span>
+                </thead>
+                <tbody>
+                  {todaySchedule.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className={styles.emptyCell}>
+                        No appointments found for the selected date.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  ) : (
+                    todaySchedule.map((appointment) => (
+                      <tr key={appointment.appointmentid}>
+                        <td>{formatClock(appointment.datetime)}</td>
+                        <td>{appointment.pet_name}</td>
+                        <td>{appointment.owner_name}</td>
+                        <td>
+                          <span className={getSchedulePillClass(appointment.status)}>
+                            {appointment.status}
+                          </span>
+                        </td>
+                        <td>
+                          <Link href="/vet/appointments">
+                            {appointment.status === "Completed" ? "View" : "Open"}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
       </div>
-      </div>
-    </main>
+    </div>
   );
 }
+

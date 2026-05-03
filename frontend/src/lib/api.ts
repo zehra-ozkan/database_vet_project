@@ -21,7 +21,7 @@ export async function apiGet<T>(path: string, query?: Record<string, QueryValue>
   return data as T;
 }
 
-export async function apiSend<T>(path: string, method: "POST" | "PATCH", body?: unknown, query?: Record<string, QueryValue>): Promise<T> {
+export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body?: unknown, query?: Record<string, QueryValue>): Promise<T> {
   const response = await fetch(buildUrl(path, query), {
     method,
     headers: { "Content-Type": "application/json" },
