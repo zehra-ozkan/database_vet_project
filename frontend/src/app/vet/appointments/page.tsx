@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
+import LogoutMenuLink from "../logout_menu_link";
 import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
 
 type VetAppointmentsProfile = {
@@ -173,7 +174,7 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
                   <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
+                  <LogoutMenuLink />
                 </div>
               </details>
             </div>
@@ -207,7 +208,10 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
               <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
                 Create visit record
               </Link>
-              <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+              <Link
+                href="/vet/timeline?openReferral=1#create-referral"
+                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+              >
                 Create referral
               </Link>
             </section>

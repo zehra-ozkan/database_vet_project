@@ -2,7 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import styles from "./vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetLoggedInVetId } from "../vet_http";
+import {
+  vetFetchJson,
+  vetGetLoggedInVetId,
+  vetGetSearchValue,
+  type VetSearchValue,
+} from "../vet_http";
+import LogoutMenuLink from "../logout_menu_link";
 
 type VetVaccinationProfile = {
   veterinarian_name: string;
@@ -10,6 +16,7 @@ type VetVaccinationProfile = {
 };
 
 type VetVaccinationItem = {
+  petid: number;
   pet_name: string;
   vaccine_name: string;
   shotdate: string | null;
@@ -19,9 +26,41 @@ type VetVaccinationItem = {
 };
 
 type VetVaccinationDashboardResponse = {
+  selected_date?: string;
   profile: VetVaccinationProfile;
   vaccination_records: VetVaccinationItem[];
 };
+
+type VaccinationStatusFilter = "all" | "overdue" | "due_soon" | "normal" | "unknown";
+
+type VetDashboardPageProps = {
+  searchParams?: Promise<{
+    date?: VetSearchValue;
+    status?: VetSearchValue;
+    q?: VetSearchValue;
+  }>;
+};
+
+const vaccinationStatusFilterOptions: Array<{ value: VaccinationStatusFilter; label: string }> = [
+  { value: "all", label: "All statuses" },
+  { value: "overdue", label: "Overdue" },
+  { value: "due_soon", label: "Due soon (<=30d)" },
+  { value: "normal", label: "Normal" },
+  { value: "unknown", label: "Unknown" },
+];
+
+function getVaccinationStatusBucket(status: string): Exclude<VaccinationStatusFilter, "all"> {
+  if (status.startsWith("Overdue")) {
+    return "overdue";
+  }
+  if (status.startsWith("Due in")) {
+    return "due_soon";
+  }
+  if (status === "Normal") {
+    return "normal";
+  }
+  return "unknown";
+}
 
 function withDoctorPrefix(name: string): string {
   if (name.toLowerCase().startsWith("dr.")) {
@@ -58,26 +97,47 @@ function formatShortDate(value: string | null): string {
 }
 
 function getVaccinationPillClass(status: string): string {
-  if (status.startsWith("Overdue")) {
+  const bucket = getVaccinationStatusBucket(status);
+  if (bucket === "overdue") {
     return `${styles.pill} ${styles.pillDanger}`;
   }
-  if (status.startsWith("Due in")) {
+  if (bucket === "due_soon") {
     return `${styles.pill} ${styles.pillWait}`;
+  }
+  if (bucket === "unknown") {
+    return `${styles.pill} ${styles.pillInfo}`;
   }
   return `${styles.pill} ${styles.pillOk}`;
 }
 
 async function fetchVetVaccinationData(
-  vetId: number
+  vetId: number,
+  dateFilter: string | undefined
 ): Promise<{ data: VetVaccinationDashboardResponse | null; error: string | null }> {
-  return vetFetchJson<VetVaccinationDashboardResponse>(`/api/vet/dashboard?vetId=${vetId}`);
+  const queryParts = [`vetId=${vetId}`];
+  if (dateFilter) {
+    queryParts.push(`date=${encodeURIComponent(dateFilter)}`);
+  }
+  return vetFetchJson<VetVaccinationDashboardResponse>(`/api/vet/dashboard?${queryParts.join("&")}`);
 }
 
-export default async function VetDashboardPage() {
+export default async function VetDashboardPage({ searchParams }: VetDashboardPageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
     redirect("/home");
   }
+
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const dateFilterRaw = vetGetSearchValue(resolvedSearchParams.date);
+  const statusFilterRaw = (vetGetSearchValue(resolvedSearchParams.status) ?? "all").toLowerCase();
+  const searchQueryRaw = vetGetSearchValue(resolvedSearchParams.q) ?? "";
+
+  const selectedStatusFilter = vaccinationStatusFilterOptions.some(
+    (option) => option.value === statusFilterRaw
+  )
+    ? (statusFilterRaw as VaccinationStatusFilter)
+    : "all";
+  const normalizedSearchQuery = searchQueryRaw.trim().toLowerCase();
 
   const homeHref = "/home";
   const vaccinationsHref = "/vet/vaccinations";
@@ -85,7 +145,7 @@ export default async function VetDashboardPage() {
   const timelineHref = "/vet/timeline";
   const profileHref = "/vet/profile";
 
-  const { data, error } = await fetchVetVaccinationData(selectedVetId);
+  const { data, error } = await fetchVetVaccinationData(selectedVetId, dateFilterRaw);
 
   if (!data) {
     return (
@@ -104,15 +164,47 @@ export default async function VetDashboardPage() {
   const vetName = withDoctorPrefix(data.profile.veterinarian_name);
   const profileInitials = getInitials(data.profile.veterinarian_name);
   const branchTitle = data.profile.branch_name ?? "No branch assigned";
-  const vaccineSummary = Array.from(
-    new Set(data.vaccination_records.map((record) => record.vaccine_name))
-  )
-    .slice(0, 3)
-    .join(", ");
-  const overdueVaccinationCount = data.vaccination_records.filter((record) =>
-    record.vaccination_status.startsWith("Overdue")
+  const allVaccinationRecords = data.vaccination_records;
+  const filteredVaccinationRecords = allVaccinationRecords.filter((record) => {
+    const statusBucket = getVaccinationStatusBucket(record.vaccination_status);
+    if (selectedStatusFilter !== "all" && statusBucket !== selectedStatusFilter) {
+      return false;
+    }
+    if (!normalizedSearchQuery) {
+      return true;
+    }
+    return (
+      record.pet_name.toLowerCase().includes(normalizedSearchQuery) ||
+      record.vaccine_name.toLowerCase().includes(normalizedSearchQuery) ||
+      record.admin_vet_name.toLowerCase().includes(normalizedSearchQuery)
+    );
+  });
+
+  const overdueVaccinationCount = allVaccinationRecords.filter(
+    (record) => getVaccinationStatusBucket(record.vaccination_status) === "overdue"
   ).length;
-  const vaccinationPreview = data.vaccination_records.slice(0, 6);
+  const dueSoonVaccinationCount = allVaccinationRecords.filter(
+    (record) => getVaccinationStatusBucket(record.vaccination_status) === "due_soon"
+  ).length;
+  const normalVaccinationCount = allVaccinationRecords.filter(
+    (record) => getVaccinationStatusBucket(record.vaccination_status) === "normal"
+  ).length;
+  const unknownVaccinationCount = allVaccinationRecords.filter(
+    (record) => getVaccinationStatusBucket(record.vaccination_status) === "unknown"
+  ).length;
+
+  const vaccineSummary = Array.from(
+    new Set(allVaccinationRecords.map((record) => record.vaccine_name))
+  )
+    .slice(0, 4)
+    .join(", ");
+  const vaccinationPreview = filteredVaccinationRecords.slice(0, 8);
+  const selectedDateForInput = dateFilterRaw ?? data.selected_date ?? "";
+  const hasActiveFilters = Boolean(
+    (dateFilterRaw && dateFilterRaw.length > 0) ||
+      selectedStatusFilter !== "all" ||
+      normalizedSearchQuery
+  );
 
   return (
     <main className={styles.page}>
@@ -137,7 +229,7 @@ export default async function VetDashboardPage() {
                 <summary className={styles.profileTrigger}>{profileInitials}</summary>
                 <div className={styles.profileMenu}>
                   <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
+                  <LogoutMenuLink />
                 </div>
               </details>
             </div>
@@ -149,16 +241,26 @@ export default async function VetDashboardPage() {
             <section className={styles.card}>
               <h1>Vaccination overview</h1>
               <p className={styles.sub}>
-                Review due and overdue vaccine records before clinical updates.
+                Review due and overdue vaccine records and complete follow-ups quickly.
               </p>
               <div className={`${styles.kpiRow} ${styles.mt2}`}>
                 <div className={styles.kpi}>
                   <div className={styles.label}>Vaccination records</div>
-                  <div className={styles.value}>{data.vaccination_records.length}</div>
+                  <div className={styles.value}>{allVaccinationRecords.length}</div>
                 </div>
                 <div className={styles.kpi}>
                   <div className={styles.label}>Overdue items</div>
                   <div className={styles.value}>{overdueVaccinationCount}</div>
+                </div>
+              </div>
+              <div className={`${styles.kpiRow} ${styles.mt1}`}>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Due soon</div>
+                  <div className={styles.value}>{dueSoonVaccinationCount}</div>
+                </div>
+                <div className={styles.kpi}>
+                  <div className={styles.label}>Unknown status</div>
+                  <div className={styles.value}>{unknownVaccinationCount}</div>
                 </div>
               </div>
             </section>
@@ -171,26 +273,30 @@ export default async function VetDashboardPage() {
               <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
                 Create visit record
               </Link>
-              <Link href={timelineHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+              <Link
+                href="/vet/timeline?openReferral=1#create-referral"
+                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+              >
                 Create referral
               </Link>
             </section>
 
             <section className={styles.card}>
-              <h2 className={styles.pageTitle}>Vaccination queue</h2>
+              <h2 className={styles.pageTitle}>Priority queue</h2>
               <p className={styles.pageSubtitle}>{branchTitle}</p>
               <div className={styles.tableWrap}>
                 <table>
                   <thead>
                     <tr>
                       <th>Pet</th>
+                      <th>Vaccine</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {vaccinationPreview.length === 0 ? (
                       <tr>
-                        <td colSpan={2} className={styles.emptyCell}>
+                        <td colSpan={3} className={styles.emptyCell}>
                           No vaccination record found.
                         </td>
                       </tr>
@@ -198,6 +304,7 @@ export default async function VetDashboardPage() {
                       vaccinationPreview.map((record, index) => (
                         <tr key={`vaccination-preview-${record.pet_name}-${index}`}>
                           <td>{record.pet_name}</td>
+                          <td>{record.vaccine_name}</td>
                           <td>{record.vaccination_status}</td>
                         </tr>
                       ))
@@ -210,64 +317,121 @@ export default async function VetDashboardPage() {
           <div className={styles.splitDivider} aria-hidden />
 
           <section className={`${styles.card} ${styles.pageSplitMain}`}>
-          <h2 className={styles.pageTitle}>Vaccination Plan &amp; Records</h2>
-          <p className={styles.pageSubtitle}>
-            Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights
-          </p>
-          <div className={styles.vaccinationMetaPanels}>
-            <div className={styles.tile}>
-              <div className={styles.tileTitle}>Plan owner</div>
-              <p className={styles.tileSub}>
-                {vetName} · {branchTitle}
-              </p>
+            <h2 className={styles.pageTitle}>Vaccination Plan &amp; Records</h2>
+            <p className={styles.pageSubtitle}>
+              Threshold: 30 days for due-soon and automatic overdue highlights.
+            </p>
+
+            <form method="get" className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Date</label>
+                <input
+                  type="date"
+                  name="date"
+                  className={styles.inputControl}
+                  defaultValue={selectedDateForInput}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Status</label>
+                <select
+                  name="status"
+                  className={styles.inputControl}
+                  defaultValue={selectedStatusFilter}
+                >
+                  {vaccinationStatusFilterOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Search</label>
+                <input
+                  type="text"
+                  name="q"
+                  className={styles.inputControl}
+                  defaultValue={searchQueryRaw}
+                  placeholder="Pet, vaccine, veterinarian"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Apply</label>
+                <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
+                  Apply filters
+                </button>
+              </div>
+              {hasActiveFilters ? (
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Reset</label>
+                  <Link href={vaccinationsHref} className={`${styles.btn} ${styles.ghost} ${styles.btnCompact}`}>
+                    Clear
+                  </Link>
+                </div>
+              ) : null}
+            </form>
+
+            <div className={styles.vaccinationMetaPanels}>
+              <div className={styles.tile}>
+                <div className={styles.tileTitle}>Plan owner</div>
+                <p className={styles.tileSub}>
+                  {vetName} · {branchTitle}
+                </p>
+              </div>
+              <div className={styles.tile}>
+                <div className={styles.tileTitle}>Current coverage</div>
+                <p className={styles.tileSub}>{vaccineSummary || "No vaccine record yet"}</p>
+                <p className={styles.tileSub}>
+                  Normal: {normalVaccinationCount} · Filtered: {filteredVaccinationRecords.length}
+                </p>
+              </div>
             </div>
-            <div className={styles.tile}>
-              <div className={styles.tileTitle}>Current plan</div>
-              <p className={styles.tileSub}>{vaccineSummary || "No vaccine record yet"}</p>
-            </div>
-          </div>
-          <div className={styles.tableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Pet</th>
-                  <th>Vaccine</th>
-                  <th>Date</th>
-                  <th>Batch</th>
-                  <th>Next due</th>
-                  <th>Admin vet</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.vaccination_records.length === 0 ? (
+
+            <div className={styles.tableWrap}>
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={7} className={styles.emptyCell}>
-                      No vaccination records linked to this veterinarian.
-                    </td>
+                    <th>Pet</th>
+                    <th>Vaccine</th>
+                    <th>Shot date</th>
+                    <th>Next due</th>
+                    <th>Status</th>
+                    <th>Admin vet</th>
+                    <th>Action</th>
                   </tr>
-                ) : (
-                  data.vaccination_records.map((record, index) => (
-                    <tr key={`${record.pet_name}-${record.vaccine_name}-${index}`}>
-                      <td>{record.pet_name}</td>
-                      <td>{record.vaccine_name}</td>
-                      <td>{formatShortDate(record.shotdate)}</td>
-                      <td>-</td>
-                      <td>{formatShortDate(record.nextduedate)}</td>
-                      <td>{record.admin_vet_name}</td>
-                      <td>
-                        <span className={getVaccinationPillClass(record.vaccination_status)}>
-                          {record.vaccination_status}
-                        </span>
+                </thead>
+                <tbody>
+                  {filteredVaccinationRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className={styles.emptyCell}>
+                        No vaccination records match selected filters.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+                  ) : (
+                    filteredVaccinationRecords.map((record, index) => (
+                      <tr key={`${record.petid}-${record.vaccine_name}-${index}`}>
+                        <td>{record.pet_name}</td>
+                        <td>{record.vaccine_name}</td>
+                        <td>{formatShortDate(record.shotdate)}</td>
+                        <td>{formatShortDate(record.nextduedate)}</td>
+                        <td>
+                          <span className={getVaccinationPillClass(record.vaccination_status)}>
+                            {record.vaccination_status}
+                          </span>
+                        </td>
+                        <td>{record.admin_vet_name}</td>
+                        <td>
+                          <Link href={`/vet/timeline?petId=${record.petid}`}>Open timeline</Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </div>
     </main>
   );

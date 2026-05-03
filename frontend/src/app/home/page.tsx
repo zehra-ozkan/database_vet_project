@@ -210,15 +210,25 @@ export default function HomePage() {
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-lg font-semibold transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            {isVet ? (
+              <Link
+                href="/vet/profile"
+                className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40 rounded-lg font-semibold transition-colors"
+              >
+                My Profile
+              </Link>
+            ) : null}
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-lg font-semibold transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
+          </div>
         </header>
 
         {isVet ? (
@@ -249,7 +259,10 @@ export default function HomePage() {
                 <a href="#" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
                   Create visit record
                 </a>
-                <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+                <Link
+                  href="/vet/timeline?openReferral=1#create-referral"
+                  className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+                >
                   Create referral
                 </Link>
               </div>
