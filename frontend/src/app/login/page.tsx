@@ -44,6 +44,8 @@ export default function Login() {
       // Only clinic managers get the new manager section; all other roles keep the current generic page.
       if (isManager(user)) {
         router.push("/manager/dashboard");
+      } else if (user.role === "Veterinarian" || user.role === "vet") {
+        router.push("/vet/dashboard");
       } else {
         router.push("/home");
       }

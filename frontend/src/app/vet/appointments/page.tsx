@@ -123,7 +123,7 @@ async function fetchVetAppointments(
 export default async function VetAppointmentsPage({ searchParams }: VetAppointmentsPageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
-    redirect("/home");
+    redirect("/vet/dashboard");
   }
 
   const resolvedSearchParams = (await searchParams) ?? {};
@@ -133,7 +133,7 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
     ? vetParsePositiveInt(selectedBranchIdRaw, 0) || null
     : null;
 
-  const homeHref = "/home";
+  const homeHref = "/vet/dashboard";
   const vaccinationsHref = "/vet/vaccinations";
   const timelineHref = "/vet/timeline";
   const profileHref = "/vet/profile";
@@ -397,3 +397,4 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
     </main>
   );
 }
+

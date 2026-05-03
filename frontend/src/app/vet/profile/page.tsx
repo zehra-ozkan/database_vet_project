@@ -53,10 +53,10 @@ async function fetchVetProfile(
 export default async function VetProfilePage() {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
-    redirect("/home");
+    redirect("/vet/dashboard");
   }
 
-  const homeHref = "/home";
+  const homeHref = "/vet/dashboard";
   const appointmentsHref = "/vet/appointments";
   const timelineHref = "/vet/timeline";
   const vaccinationsHref = "/vet/vaccinations";
@@ -193,3 +193,4 @@ export default async function VetProfilePage() {
     </main>
   );
 }
+
