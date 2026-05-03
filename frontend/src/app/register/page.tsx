@@ -43,8 +43,7 @@ export default function Register() {
       localStorage.setItem("user", JSON.stringify(user));
       document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
       
-      // Redirect to home dashboard
-      router.push("/home");
+      router.push("/petOwner/dashboard");
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to register");

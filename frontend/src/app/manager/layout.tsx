@@ -27,7 +27,7 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
     }
 
     startTransition(() => setAuthState("denied"));
-    router.push("/home");
+    router.push("/petOwner/dashboard");
   }, [router]);
 
   if (authState === "loading") {

@@ -41,13 +41,12 @@ export default function Login() {
       localStorage.setItem("user", JSON.stringify(user));
       document.cookie = `session_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; samesite=lax`;
 
-      // Only clinic managers get the new manager section; all other roles keep the current generic page.
       if (isManager(user)) {
         router.push("/manager/dashboard");
       } else if (user.role === "Veterinarian" || user.role === "vet") {
         router.push("/vet/dashboard");
       } else {
-        router.push("/home");
+        router.push("/petOwner/dashboard");
       }
 
     } catch (err) {
