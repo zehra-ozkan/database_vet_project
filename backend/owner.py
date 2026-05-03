@@ -377,7 +377,7 @@ def owner_pet_activity(pet_id: int):
             b.name AS branchName
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
-        JOIN Branch b ON b.branchID = v.branchID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
         JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
         WHERE vp.petID = %s
         ORDER BY a.dateTime DESC
@@ -407,7 +407,7 @@ def owner_recent_activity():
             vs.notes
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
-        JOIN Branch b ON b.branchID = v.branchID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
         LEFT JOIN VisitSummary vs ON vs.appointmentID = a.appointmentID
         WHERE a.petOwnerID = %s
         ORDER BY a.dateTime DESC
@@ -1002,6 +1002,300 @@ def dashboard_mark_lost():
         )
         conn.commit()
         return jsonify({"success": True}), 201
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Load available branches for browsing
+@owner_route("/book/branches", methods=["GET"])
+def book_branches():
+    rows = fetch_all(
+        """
+        SELECT branchID, name, location, specialization
+        FROM Branch
+        ORDER BY name;
+        """
+    )
+    return jsonify(rows)
+
+
+# Browse veterinarians with filters
+@owner_route("/book/vets", methods=["GET"])
+def book_vets():
+    branch_id = request.args.get("branchId", type=int)
+    species = request.args.get("species", "").strip()
+    specialization = request.args.get("specialization", "").strip()
+    date_str = request.args.get("date", "").strip()
+
+    conditions = []
+    params = []
+
+    if branch_id:
+        conditions.append("b.branchID = %s")
+        params.append(branch_id)
+
+    if specialization:
+        conditions.append("b.specialization ILIKE %s")
+        params.append(f"%{specialization}%")
+
+    if species:
+        conditions.append("v.speciesExpertise ILIKE %s")
+        params.append(f"%{species}%")
+
+    if date_str:
+        conditions.append("v.availableDates LIKE %s")
+        params.append(f"%{date_str}%")
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    rows = fetch_all(
+        f"""
+        SELECT v.veterinarianID, u.name AS veterinarianName, b.name AS branchName,
+               v.speciesExpertise, v.availableDates, v.rating
+        FROM Veterinarian v
+        JOIN Users u ON u.userID = v.veterinarianID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
+        {where_clause}
+        ORDER BY u.name;
+        """,
+        tuple(params) if params else None,
+    )
+    return jsonify(rows)
+
+
+# Check unpaid bills before booking
+@owner_route("/book/check-bills", methods=["GET"])
+def book_check_bills():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    rows = fetch_all(
+        """
+        SELECT billNo, dueDate, consultationFee, treatmentCost, medicationCost
+        FROM Bill
+        WHERE payerID = %s AND paid = FALSE;
+        """,
+        (owner_id,),
+    )
+    return jsonify(rows)
+
+
+# Create the appointment
+@owner_route("/book/create", methods=["POST"])
+def book_create():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    data = request.get_json() or {}
+    vet_id = data.get("vetId")
+    appt_datetime = data.get("dateTime")
+    atype = data.get("aType", "CHECKUP")
+    vaccination_plan_id = data.get("vaccinationPlanId")
+
+    if not vet_id or not appt_datetime:
+        return jsonify({"error": "vetId and dateTime are required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Check unpaid bills before booking
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM Bill WHERE payerID = %s AND paid = FALSE;",
+            (owner_id,),
+        )
+        bill_count = cur.fetchone()["cnt"]
+        if bill_count > 0:
+            return jsonify({"error": "You have unpaid bills. Please clear them before booking."}), 409
+
+        # Check vet's daily appointment limit
+        cur.execute(
+            """
+            SELECT v.maxDailyAppointmentLimit,
+                   COUNT(a.appointmentID) AS booked
+            FROM Veterinarian v
+            LEFT JOIN Appointment a
+                ON a.veterinarianID = v.veterinarianID
+               AND DATE(a.dateTime) = DATE(%s::TIMESTAMP)
+            WHERE v.veterinarianID = %s
+            GROUP BY v.maxDailyAppointmentLimit;
+            """,
+            (appt_datetime, vet_id),
+        )
+        limit_row = cur.fetchone()
+        if limit_row and limit_row["maxdailyappointmentlimit"] is not None:
+            if int(limit_row["booked"]) >= int(limit_row["maxdailyappointmentlimit"]):
+                return jsonify({"error": "This veterinarian has reached their daily appointment limit."}), 409
+
+        # Create the appointment
+        cur.execute(
+            """
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING appointmentID;
+            """,
+            (atype, appt_datetime, vaccination_plan_id, vet_id, owner_id),
+        )
+        new_id = cur.fetchone()["appointmentid"]
+        conn.commit()
+        return jsonify({"success": True, "appointmentId": new_id}), 201
+    except Exception as exc:
+        conn.rollback()
+        error_msg = str(exc)
+        if "uq_vet_datetime" in error_msg:
+            return jsonify({"error": "This time slot is already taken. Please choose another."}), 409
+        return jsonify({"error": error_msg}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Load appointment list of the pet owner
+@owner_route("/appointments/list", methods=["GET"])
+def appointments_list():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    rows = fetch_all(
+        """
+        SELECT a.appointmentID, a.aType, a.dateTime, u.name AS veterinarianName, b.name AS branchName
+        FROM Appointment a
+        JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
+        JOIN Users u ON u.userID = v.veterinarianID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
+        WHERE a.petOwnerID = %s
+        ORDER BY a.dateTime DESC;
+        """,
+        (owner_id,),
+    )
+    return jsonify(rows)
+
+
+# Load invoice list of the pet owner
+@owner_route("/appointments/invoices", methods=["GET"])
+def appointments_invoices():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    rows = fetch_all(
+        """
+        SELECT bl.billNo, bl.appointmentID, bl.consultationFee, bl.treatmentCost,
+               bl.medicationCost, bl.dueDate, bl.paid
+        FROM Bill bl
+        WHERE bl.payerID = %s
+        ORDER BY bl.dueDate DESC;
+        """,
+        (owner_id,),
+    )
+    return jsonify(rows)
+
+
+# Load billing summary: outstanding amount and paid this month
+@owner_route("/appointments/summary", methods=["GET"])
+def appointments_summary():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    # Calculate total outstanding amount
+    outstanding_row = fetch_one(
+        """
+        SELECT SUM(consultationFee + treatmentCost + medicationCost) AS outstandingAmount
+        FROM Bill
+        WHERE payerID = %s AND paid = FALSE;
+        """,
+        (owner_id,),
+    )
+
+    # Calculate amount paid this month
+    paid_row = fetch_one(
+        """
+        SELECT SUM(consultationFee + treatmentCost + medicationCost) AS paidThisMonth
+        FROM Bill
+        WHERE payerID = %s AND paid = TRUE
+          AND dueDate BETWEEN DATE_TRUNC('month', CURRENT_DATE)
+                          AND (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE;
+        """,
+        (owner_id,),
+    )
+
+    return jsonify(
+        {
+            "outstandingAmount": float(outstanding_row["outstandingamount"] or 0),
+            "paidThisMonth": float(paid_row["paidthismonth"] or 0),
+        }
+    )
+
+
+# Mark an invoice as paid
+@owner_route("/appointments/pay-bill", methods=["PATCH"])
+def appointments_pay_bill():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    data = request.get_json() or {}
+    bill_no = data.get("billNo")
+    appointment_id = data.get("appointmentId")
+
+    if bill_no is None or appointment_id is None:
+        return jsonify({"error": "billNo and appointmentId are required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            UPDATE Bill SET paid = TRUE
+            WHERE billNo = %s AND appointmentID = %s AND payerID = %s;
+            """,
+            (bill_no, appointment_id, owner_id),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Cancel an upcoming appointment
+@owner_route("/appointments/cancel", methods=["POST"])
+def appointments_cancel():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    data = request.get_json() or {}
+    appointment_id = data.get("appointmentId")
+
+    if appointment_id is None:
+        return jsonify({"error": "appointmentId is required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            DELETE FROM Appointment
+            WHERE appointmentID = %s AND petOwnerID = %s AND dateTime > NOW();
+            """,
+            (appointment_id, owner_id),
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        if deleted == 0:
+            return jsonify({"error": "Appointment not found or cannot be cancelled (already past)."}), 404
+        return jsonify({"success": True})
     except Exception as exc:
         conn.rollback()
         return jsonify({"error": str(exc)}), 500

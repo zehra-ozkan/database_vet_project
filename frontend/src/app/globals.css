@@ -428,3 +428,57 @@ body {
     align-items: stretch;
   }
 }
+
+/* ── Appointments & Billing two-column layout ── */
+.pet-owner .app-bill-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .pet-owner .app-bill-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Additional pill variant ── */
+.pet-owner .pill.danger {
+  background: rgba(225, 29, 72, 0.1);
+  color: var(--danger);
+}
+
+/* ── Additional margin utilities ── */
+.pet-owner .mb-2 {
+  margin-bottom: 12px;
+}
+.pet-owner .mt-1 {
+  margin-top: 8px;
+}
+
+/* ── Book appointment two-column layout ── */
+.pet-owner .book-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+.pet-owner .book-form {
+  position: sticky;
+  top: 24px;
+}
+@media (max-width: 900px) {
+  .pet-owner .book-layout {
+    grid-template-columns: 1fr;
+  }
+  .pet-owner .book-form {
+    position: static;
+  }
+}
+
+/* ── Active nav link ── */
+.pet-owner .nav a.active {
+  background: rgba(109, 40, 217, 0.12);
+  border-color: rgba(109, 40, 217, 0.35);
+  font-weight: 700;
+}
