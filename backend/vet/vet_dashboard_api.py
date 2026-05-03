@@ -115,6 +115,16 @@ def vet_get_dashboard():
 
         cursor.execute(
             """
+            WITH scoped_pets AS (
+                SELECT vp.petid
+                FROM vaccinationplan vp
+                WHERE vp.veterinarianid = %s
+                UNION
+                SELECT p.petid
+                FROM appointment a
+                JOIN pet p ON p.ownerid = a.petownerid
+                WHERE a.veterinarianid = %s
+            )
             SELECT
                 vsv.petid,
                 vsv.petname AS pet_name,
@@ -134,11 +144,11 @@ def vet_get_dashboard():
             JOIN vaccinationrecord vr ON vr.recordid = vsv.recordid
             JOIN vaccinationplan vp ON vp.planid = vr.planid
             LEFT JOIN users u ON u.userid = vp.veterinarianid
-            WHERE vp.veterinarianid = %s
+            JOIN scoped_pets sp ON sp.petid = vsv.petid
             ORDER BY vsv.nextduedate ASC NULLS LAST, vsv.shotdate DESC NULLS LAST
             LIMIT 40
             """,
-            (vet_id,),
+            (vet_id, vet_id),
         )
         vaccination_records = cursor.fetchall()
 
