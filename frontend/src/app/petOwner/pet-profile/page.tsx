@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiGet, apiSend, formatDate } from "@/lib/api";
+import { TIME_SLOTS } from "@/lib/constants";
 
 type PetProfileDetails = {
   petid: number;
@@ -61,7 +62,6 @@ type OccupiedSlot = {
   type: string;
 };
 
-const ALL_SLOTS = ["09:00", "10:30", "14:00", "15:30"];
 
 function PetProfileContent() {
   const searchParams = useSearchParams();
@@ -258,7 +258,7 @@ function PetProfileContent() {
     : recommendedVets;
 
   const occupiedTimes = occupiedSlots.map((s) => s.datetime.slice(11, 16));
-  const availableSlots = ALL_SLOTS.filter((slot) => !occupiedTimes.includes(slot));
+  const availableSlots = TIME_SLOTS.filter((slot) => !occupiedTimes.includes(slot));
 
   if (loading) return <div className="rounded-3xl bg-white/80 p-6 text-sm font-semibold text-slate-500 shadow-sm">Loading pet profile...</div>;
   if (error) return <div className="rounded-3xl bg-rose-50 p-6 text-sm font-semibold text-rose-700 shadow-sm">{error}</div>;

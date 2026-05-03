@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend, formatDate } from "@/lib/api";
+import { TIME_SLOTS } from "@/lib/constants";
 
 type PetDetailResponse = {
   pet: {
@@ -71,7 +72,6 @@ const emptyBooking: BookingForm = {
   timeSlot: "",
 };
 
-const appointmentSlots = ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
 
 export default function PetProfilePage() {
   const params = useParams<{ petID: string }>();
@@ -211,7 +211,7 @@ export default function PetProfilePage() {
   const latestActivity = activity[0] ?? null;
   const branchOptions = getUniqueBranches(recommendedVets);
   const visibleVets = booking.branchID ? recommendedVets.filter((vet) => String(vet.branchid) === booking.branchID) : recommendedVets;
-  const availableSlots = appointmentSlots.filter((slot) => !isSlotOccupied(slot, occupiedAppointments));
+  const availableSlots = TIME_SLOTS.filter((slot) => !isSlotOccupied(slot, occupiedAppointments));
   const todayValue = new Date().toISOString().slice(0, 10);
 
   return (
