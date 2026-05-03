@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import psycopg2
@@ -9,6 +9,9 @@ from vet.vet_db import vet_get_db_connection, vet_serialize_records
 
 
 vet_appointments_bp = Blueprint("vet_appointments_bp", __name__)
+
+_VET_REFERRAL_APPROVAL_MARKER = "[[APPROVED_APPT:"
+_VET_REFERRAL_APPROVAL_SUFFIX = "]]"
 
 
 def _vet_parse_filter_date(raw_date):
@@ -84,6 +87,37 @@ def _vet_serialize_row(row):
     return serialized
 
 
+def _vet_parse_referral_diagnosis_status(diagnosis):
+    """Split referral diagnosis text from internal approval marker."""
+    if diagnosis is None:
+        return None, False
+
+    diagnosis_text = str(diagnosis)
+    marker_index = diagnosis_text.find(_VET_REFERRAL_APPROVAL_MARKER)
+    if marker_index < 0:
+        normalized = diagnosis_text.strip()
+        return normalized if normalized else None, False
+
+    diagnosis_without_marker = diagnosis_text[:marker_index].strip()
+    return diagnosis_without_marker if diagnosis_without_marker else None, True
+
+
+def _vet_build_approved_referral_diagnosis(diagnosis, appointment_id, appointment_datetime):
+    """Append a compact internal marker so approved referrals remain identifiable."""
+    diagnosis_text = "" if diagnosis is None else str(diagnosis)
+    if _VET_REFERRAL_APPROVAL_MARKER in diagnosis_text:
+        return diagnosis_text
+
+    approval_token = (
+        f"{_VET_REFERRAL_APPROVAL_MARKER}{appointment_id}|"
+        f"{appointment_datetime.isoformat()}{_VET_REFERRAL_APPROVAL_SUFFIX}"
+    )
+    diagnosis_body = diagnosis_text.strip()
+    if diagnosis_body:
+        return f"{diagnosis_body} {approval_token}"
+    return approval_token
+
+
 def _vet_error_response(exc):
     """Map database errors to cleaner API responses."""
     message = str(exc).strip() if str(exc).strip() else "Database operation failed."
@@ -150,6 +184,26 @@ def _vet_fetch_owner_pets(cursor, owner_id):
         (owner_id,),
     )
     return cursor.fetchall()
+
+
+def _vet_find_next_available_datetime(cursor, veterinarian_id, starting_datetime):
+    """Find next available datetime slot for veterinarian with 30-minute increments."""
+    candidate = starting_datetime.replace(second=0, microsecond=0)
+    for _ in range(96):  # 48 hours window
+        cursor.execute(
+            """
+            SELECT 1
+            FROM appointment
+            WHERE veterinarianid = %s
+              AND datetime = %s
+            LIMIT 1
+            """,
+            (veterinarian_id, candidate),
+        )
+        if cursor.fetchone() is None:
+            return candidate
+        candidate += timedelta(minutes=30)
+    raise ValueError("No available appointment slot found for veterinarian.")
 
 
 def _vet_resolve_selected_pet_id(owner_pets, requested_pet_id):
@@ -270,11 +324,26 @@ def vet_get_appointments():
                 r.diagnosis,
                 r.referrer AS referrer_vet_id,
                 COALESCE(ur.name, 'Unknown') AS referrer_name,
-                COALESCE(br.name, 'Unassigned') AS referrer_branch_name
+                COALESCE(br.name, 'Unassigned') AS referrer_branch_name,
+                inferred.petownerid AS inferred_owner_id,
+                COALESCE(uo.name, 'Unknown') AS inferred_owner_name,
+                inferred.vaccinationplanid AS inferred_vaccination_plan_id,
+                inferred.atype::text AS inferred_appointment_type
             FROM refers r
             LEFT JOIN users ur ON ur.userid = r.referrer
             LEFT JOIN veterinarian vr ON vr.veterinarianid = r.referrer
             LEFT JOIN branch br ON br.branchid = vr.branchid
+            LEFT JOIN LATERAL (
+                SELECT
+                    a.petownerid,
+                    a.vaccinationplanid,
+                    a.atype
+                FROM appointment a
+                WHERE a.veterinarianid = r.referrer
+                ORDER BY ABS(a.datetime::date - r.referraldate) ASC, a.datetime DESC
+                LIMIT 1
+            ) inferred ON TRUE
+            LEFT JOIN users uo ON uo.userid = inferred.petownerid
             WHERE r.referee = %s
             ORDER BY r.referraldate DESC
             LIMIT 20
@@ -282,6 +351,14 @@ def vet_get_appointments():
             (vet_id,),
         )
         incoming_referrals = cursor.fetchall()
+        normalized_incoming_referrals = []
+        for referral in incoming_referrals:
+            diagnosis_raw = referral.get("diagnosis")
+            diagnosis_text, approved = _vet_parse_referral_diagnosis_status(diagnosis_raw)
+            referral["diagnosis_raw"] = diagnosis_raw
+            referral["diagnosis"] = diagnosis_text
+            referral["approved"] = approved
+            normalized_incoming_referrals.append(referral)
 
         return jsonify(
             {
@@ -293,7 +370,7 @@ def vet_get_appointments():
                 "profile": vet_serialize_records([profile])[0],
                 "available_branches": vet_serialize_records(available_branches),
                 "appointments": vet_serialize_records(appointments),
-                "incoming_referrals": vet_serialize_records(incoming_referrals),
+                "incoming_referrals": vet_serialize_records(normalized_incoming_referrals),
             }
         )
     except Exception as exc:
@@ -720,6 +797,25 @@ def vet_create_referral():
             raise ValueError("refereeVetId must be different from referrer veterinarian.")
         diagnosis = payload.get("diagnosis")
         referral_date = payload.get("referralDate")
+        pet_owner_id = _vet_parse_optional_int(payload.get("petOwnerId"))
+        vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
+        appointment_type_raw = payload.get("appointmentType")
+        appointment_type = (
+            appointment_type_raw.strip().upper()
+            if isinstance(appointment_type_raw, str) and appointment_type_raw.strip()
+            else "COMPLAINT"
+        )
+        if appointment_type not in {"CHECKUP", "VACCINATION", "COMPLAINT", "EMERGENCY"}:
+            raise ValueError("appointmentType is invalid.")
+
+        follow_up_datetime_raw = payload.get("followUpDateTime")
+        parsed_follow_up_datetime = None
+        if isinstance(follow_up_datetime_raw, str) and follow_up_datetime_raw.strip():
+            normalized_for_parse = follow_up_datetime_raw.strip().replace("Z", "+00:00")
+            parsed_follow_up_datetime = datetime.fromisoformat(normalized_for_parse)
+            if parsed_follow_up_datetime.tzinfo is not None:
+                parsed_follow_up_datetime = parsed_follow_up_datetime.replace(tzinfo=None)
+            parsed_follow_up_datetime = parsed_follow_up_datetime.replace(second=0, microsecond=0)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -752,6 +848,18 @@ def vet_create_referral():
         if cursor.fetchone() is None:
             return jsonify({"error": "Referee veterinarian not found."}), 404
 
+        if pet_owner_id is not None:
+            cursor.execute(
+                """
+                SELECT po.ownerid
+                FROM petowner po
+                WHERE po.ownerid = %s
+                """,
+                (pet_owner_id,),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": "petOwnerId not found."}), 404
+
         cursor.execute(
             """
             INSERT INTO refers (referrer, referee, referraldate, diagnosis)
@@ -771,9 +879,200 @@ def vet_create_referral():
             ),
         )
         referral = cursor.fetchone()
+
+        follow_up_appointment = None
+        if pet_owner_id is not None:
+            base_datetime = parsed_follow_up_datetime or (
+                datetime.now().replace(second=0, microsecond=0) + timedelta(days=1)
+            )
+            slot_datetime = _vet_find_next_available_datetime(cursor, referee_vet_id, base_datetime)
+
+            cursor.execute(
+                """
+                INSERT INTO appointment (
+                    atype,
+                    datetime,
+                    vaccinationplanid,
+                    veterinarianid,
+                    petownerid
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid
+                """,
+                (
+                    appointment_type,
+                    slot_datetime,
+                    vaccination_plan_id,
+                    referee_vet_id,
+                    pet_owner_id,
+                ),
+            )
+            follow_up_appointment = cursor.fetchone()
+
         conn.commit()
 
-        return jsonify({"message": "Referral created.", "referral": _vet_serialize_row(referral)}), 201
+        return jsonify(
+            {
+                "message": "Referral created.",
+                "referral": _vet_serialize_row(referral),
+                "follow_up_appointment": _vet_serialize_row(follow_up_appointment),
+            }
+        ), 201
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return _vet_error_response(exc)
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@vet_appointments_bp.route("/api/vet/referrals/approve", methods=["POST"])
+def vet_approve_referral():
+    """Approve incoming referral by scheduling it as a new appointment."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        referee_vet_id = _vet_resolve_vet_id(payload)
+        referrer_vet_id = _vet_parse_optional_int(payload.get("referrerVetId"))
+        if referrer_vet_id is None:
+            raise ValueError("referrerVetId is required.")
+
+        referral_date_raw = payload.get("referralDate")
+        if not isinstance(referral_date_raw, str) or not referral_date_raw.strip():
+            raise ValueError("referralDate is required.")
+        referral_date = datetime.strptime(referral_date_raw.strip(), "%Y-%m-%d").date()
+
+        diagnosis_raw = payload.get("diagnosisRaw")
+        if diagnosis_raw is not None and not isinstance(diagnosis_raw, str):
+            raise ValueError("diagnosisRaw must be a string or null.")
+
+        scheduled_datetime_raw = payload.get("scheduledDateTime")
+        if not isinstance(scheduled_datetime_raw, str) or not scheduled_datetime_raw.strip():
+            raise ValueError("scheduledDateTime is required.")
+        normalized_for_parse = scheduled_datetime_raw.strip().replace("Z", "+00:00")
+        parsed_datetime = datetime.fromisoformat(normalized_for_parse)
+        if parsed_datetime.tzinfo is not None:
+            parsed_datetime = parsed_datetime.replace(tzinfo=None)
+        parsed_datetime = parsed_datetime.replace(second=0, microsecond=0)
+
+        pet_owner_id = _vet_parse_optional_int(payload.get("petOwnerId"))
+        vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
+        appointment_type_raw = payload.get("appointmentType")
+        appointment_type = (
+            appointment_type_raw.strip().upper()
+            if isinstance(appointment_type_raw, str) and appointment_type_raw.strip()
+            else "COMPLAINT"
+        )
+        if appointment_type not in {"CHECKUP", "VACCINATION", "COMPLAINT", "EMERGENCY"}:
+            raise ValueError("appointmentType is invalid.")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = vet_get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT r.diagnosis
+            FROM refers r
+            WHERE r.referrer = %s
+              AND r.referee = %s
+              AND r.referraldate = %s
+              AND r.diagnosis IS NOT DISTINCT FROM %s
+            FOR UPDATE
+            LIMIT 1
+            """,
+            (referrer_vet_id, referee_vet_id, referral_date, diagnosis_raw),
+        )
+        referral_row = cursor.fetchone()
+        if referral_row is None:
+            return jsonify({"error": "Referral record not found."}), 404
+
+        _, is_already_approved = _vet_parse_referral_diagnosis_status(referral_row.get("diagnosis"))
+        if is_already_approved:
+            return jsonify({"message": "Referral already approved.", "approved": True}), 200
+
+        if pet_owner_id is None:
+            cursor.execute(
+                """
+                SELECT a.petownerid, a.vaccinationplanid, a.atype
+                FROM appointment a
+                WHERE a.veterinarianid = %s
+                ORDER BY ABS(a.datetime::date - %s::date) ASC, a.datetime DESC
+                LIMIT 1
+                """,
+                (referrer_vet_id, referral_date),
+            )
+            inferred = cursor.fetchone()
+            if inferred is None:
+                return jsonify({"error": "Could not infer pet owner context for this referral."}), 409
+            pet_owner_id = int(inferred["petownerid"])
+            if vaccination_plan_id is None:
+                vaccination_plan_id = inferred["vaccinationplanid"]
+            if payload.get("appointmentType") is None and inferred.get("atype"):
+                appointment_type = str(inferred["atype"]).upper()
+
+        slot_datetime = _vet_find_next_available_datetime(cursor, referee_vet_id, parsed_datetime)
+
+        cursor.execute(
+            """
+            INSERT INTO appointment (
+                atype,
+                datetime,
+                vaccinationplanid,
+                veterinarianid,
+                petownerid
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid
+            """,
+            (
+                appointment_type,
+                slot_datetime,
+                vaccination_plan_id,
+                referee_vet_id,
+                pet_owner_id,
+            ),
+        )
+        created_appointment = cursor.fetchone()
+
+        updated_diagnosis = _vet_build_approved_referral_diagnosis(
+            diagnosis_raw,
+            int(created_appointment["appointmentid"]),
+            created_appointment["datetime"],
+        )
+        cursor.execute(
+            """
+            UPDATE refers
+            SET diagnosis = %s
+            WHERE referrer = %s
+              AND referee = %s
+              AND referraldate = %s
+              AND diagnosis IS NOT DISTINCT FROM %s
+            """,
+            (
+                updated_diagnosis,
+                referrer_vet_id,
+                referee_vet_id,
+                referral_date,
+                diagnosis_raw,
+            ),
+        )
+        conn.commit()
+
+        return jsonify(
+            {
+                "message": "Referral approved and appointment created.",
+                "approved": True,
+                "appointment": _vet_serialize_row(created_appointment),
+            }
+        ), 201
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -925,33 +1224,9 @@ def vet_finalize_appointment(appointment_id):
             return jsonify({"error": "Appointment is already completed."}), 409
 
         follow_up_appointment = None
-        if parsed_datetime is not None:
-            current_datetime = appointment["datetime"]
-            if isinstance(current_datetime, datetime):
-                current_datetime = current_datetime.replace(second=0, microsecond=0)
-
-            if current_datetime != parsed_datetime:
-                cursor.execute(
-                    """
-                    INSERT INTO appointment (
-                        atype,
-                        datetime,
-                        vaccinationplanid,
-                        veterinarianid,
-                        petownerid
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING appointmentid, datetime, atype, veterinarianid, petownerid, vaccinationplanid
-                    """,
-                    (
-                        appointment["atype"],
-                        parsed_datetime,
-                        appointment["vaccinationplanid"],
-                        vet_id,
-                        appointment["petownerid"],
-                    ),
-                )
-                follow_up_appointment = cursor.fetchone()
+        current_datetime = appointment["datetime"]
+        if isinstance(current_datetime, datetime):
+            current_datetime = current_datetime.replace(second=0, microsecond=0)
 
         cursor.execute(
             """
@@ -1037,6 +1312,30 @@ def vet_finalize_appointment(appointment_id):
                 (vet_id, referee_vet_id, referral_diagnosis),
             )
             created_referral = cursor.fetchone()
+
+        if parsed_datetime is not None and current_datetime != parsed_datetime:
+            slot_datetime = _vet_find_next_available_datetime(cursor, vet_id, parsed_datetime)
+            cursor.execute(
+                """
+                INSERT INTO appointment (
+                    atype,
+                    datetime,
+                    vaccinationplanid,
+                    veterinarianid,
+                    petownerid
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING appointmentid, datetime, atype, veterinarianid, petownerid, vaccinationplanid
+                """,
+                (
+                    appointment["atype"],
+                    slot_datetime,
+                    appointment["vaccinationplanid"],
+                    vet_id,
+                    appointment["petownerid"],
+                ),
+            )
+            follow_up_appointment = cursor.fetchone()
 
         cursor.execute("SELECT COALESCE(MAX(b.billno), 0) + 1 AS next_bill_no FROM bill b")
         next_bill_no = int(cursor.fetchone()["next_bill_no"])
