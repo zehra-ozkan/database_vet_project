@@ -285,8 +285,139 @@ body {
   margin-top: 24px;
 }
 
+/* ── Hero (two-column variant of panels, used on dashboard) ── */
+.pet-owner .hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+/* ── KPI row ── */
+.pet-owner .kpi-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.pet-owner .kpi {
+  flex: 1;
+  min-width: 100px;
+}
+.pet-owner .kpi .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pet-owner .kpi .value {
+  font-size: 32px;
+  font-weight: 800;
+  margin: 4px 0 0;
+  line-height: 1.1;
+}
+
+/* ── Microchip widget ── */
+.pet-owner .chip {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.pet-owner .microchip {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.85), rgba(5, 150, 105, 0.6));
+  box-shadow: 0 8px 24px rgba(109, 40, 217, 0.2);
+}
+
+/* ── Status pills ── */
+.pet-owner .pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.pet-owner .pill.ok {
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--success);
+}
+.pet-owner .pill.wait {
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+.pet-owner .pill.info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+/* ── Hint / sub text ── */
+.pet-owner .hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 14px;
+}
+.pet-owner .sub {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+/* ── Table ── */
+.pet-owner .table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+}
+.pet-owner .table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pet-owner .table-wrap thead th {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
+}
+.pet-owner .table-wrap tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.pet-owner .table-wrap tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Button modifiers ── */
+.pet-owner .btn.block {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* ── Margin utilities ── */
+.pet-owner .mt-2 {
+  margin-top: 12px;
+}
+
+/* ── Responsive ── */
 @media (max-width: 960px) {
   .pet-owner .panels {
+    grid-template-columns: 1fr;
+  }
+  .pet-owner .hero {
     grid-template-columns: 1fr;
   }
 }
