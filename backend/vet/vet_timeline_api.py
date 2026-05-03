@@ -17,18 +17,29 @@ def _vet_parse_optional_positive_int(raw_value):
     return parsed_value
 
 
+def _vet_resolve_vet_id(payload=None):
+    payload = payload or {}
+    raw_vet_id = (
+        payload.get("vetId")
+        or request.args.get("vetId")
+        or request.headers.get("X-Dev-User-Id")
+        or "1"
+    )
+    vet_id = int(raw_vet_id)
+    if vet_id <= 0:
+        raise ValueError("vetId must be a positive integer.")
+    return vet_id
+
+
 @vet_timeline_bp.route("/api/vet/timeline", methods=["GET"])
 def vet_get_timeline():
     """Return timeline-oriented data for veterinarian and selected pet."""
-    vet_id_raw = request.args.get("vetId") or request.headers.get("X-Dev-User-Id") or "1"
     pet_id_raw = request.args.get("petId")
 
     try:
-        vet_id = int(vet_id_raw)
-        if vet_id <= 0:
-            raise ValueError
-    except ValueError:
-        return jsonify({"error": "vetId must be a positive integer."}), 400
+        vet_id = _vet_resolve_vet_id()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     try:
         selected_pet_id = _vet_parse_optional_positive_int(pet_id_raw)
@@ -58,6 +69,22 @@ def vet_get_timeline():
         profile = cursor.fetchone()
         if not profile:
             return jsonify({"error": "Veterinarian not found."}), 404
+
+        cursor.execute(
+            """
+            SELECT
+                v.veterinarianid,
+                u.name AS veterinarian_name,
+                COALESCE(b.name, 'Unassigned') AS branch_name
+            FROM veterinarian v
+            JOIN users u ON u.userid = v.veterinarianid
+            LEFT JOIN branch b ON b.branchid = v.branchid
+            WHERE v.veterinarianid <> %s
+            ORDER BY u.name ASC
+            """,
+            (vet_id,),
+        )
+        referral_targets = cursor.fetchall()
 
         cursor.execute(
             """
@@ -93,6 +120,9 @@ def vet_get_timeline():
                     "visit_events": [],
                     "prescription_events": [],
                     "referral_events": [],
+                    "referral_targets": vet_serialize_records(referral_targets),
+                    "microchip": None,
+                    "timeline_notice": "Timeline is empty for this veterinarian.",
                 }
             )
 
@@ -155,20 +185,50 @@ def vet_get_timeline():
         cursor.execute(
             """
             SELECT
+                c.chipid AS chip_id,
+                c.implantationdate AS implantation_date,
+                COALESCE(u.name, 'Unknown') AS registered_by,
+                CASE
+                    WHEN c.islost THEN 'Reported Lost'
+                    ELSE 'Active'
+                END AS status,
+                c.location AS last_known_location
+            FROM chip c
+            LEFT JOIN users u ON u.userid = c.veterinarianid
+            WHERE c.petid = %s
+            ORDER BY c.chipid DESC
+            LIMIT 1
+            """,
+            (selected_pet_id,),
+        )
+        microchip = cursor.fetchone()
+
+        cursor.execute(
+            """
+            SELECT
                 a.appointmentid,
                 a.datetime,
                 vs.notes,
                 COALESCE(u.name, 'Unknown') AS veterinarian_name,
-                COALESCE(b.name, 'Unknown') AS branch_name
+                COALESCE(b.name, 'Unknown') AS branch_name,
+                vp.petid AS linked_pet_id,
+                p.name AS linked_pet_name,
+                CASE
+                    WHEN vp.petid IS NULL THEN TRUE
+                    ELSE FALSE
+                END AS owner_level_event
             FROM appointment a
             JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             LEFT JOIN users u ON u.userid = a.veterinarianid
             LEFT JOIN veterinarian vv ON vv.veterinarianid = a.veterinarianid
             LEFT JOIN branch b ON b.branchid = vv.branchid
+            LEFT JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
+            LEFT JOIN pet p ON p.petid = vp.petid
             WHERE a.petownerid = %s
+              AND (vp.petid IS NULL OR vp.petid = %s)
             ORDER BY a.datetime DESC
             """,
-            (owner_id,),
+            (owner_id, selected_pet_id),
         )
         visit_events = cursor.fetchall()
 
@@ -225,9 +285,108 @@ def vet_get_timeline():
                 "visit_events": vet_serialize_records(visit_events),
                 "prescription_events": vet_serialize_records(prescription_events),
                 "referral_events": vet_serialize_records(referral_events),
+                "referral_targets": vet_serialize_records(referral_targets),
+                "microchip": vet_serialize_records([microchip])[0] if microchip else None,
+                "timeline_notice": (
+                    "Appointments are linked to pet owner, not directly to pet. "
+                    "Owner-level visit events may appear when appointment pet is unspecified."
+                ),
             }
         )
     except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@vet_timeline_bp.route("/api/vet/pets/<int:pet_id>/lost-found-report", methods=["POST"])
+def vet_create_lost_found_report(pet_id):
+    """Create lost/found report for a pet and rely on DB trigger to update chip status."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        vet_id = _vet_resolve_vet_id(payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    is_found = payload.get("isFound")
+    if not isinstance(is_found, bool):
+        return jsonify({"error": "isFound must be a boolean."}), 400
+
+    created_date = payload.get("createdDate")
+
+    conn = None
+    cursor = None
+    try:
+        conn = vet_get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT v.veterinarianid
+            FROM veterinarian v
+            WHERE v.veterinarianid = %s
+            """,
+            (vet_id,),
+        )
+        if cursor.fetchone() is None:
+            return jsonify({"error": "Veterinarian not found."}), 404
+
+        cursor.execute(
+            """
+            SELECT p.petid
+            FROM pet p
+            WHERE p.petid = %s
+            """,
+            (pet_id,),
+        )
+        if cursor.fetchone() is None:
+            return jsonify({"error": "Pet not found."}), 404
+
+        cursor.execute(
+            """
+            INSERT INTO lostfoundreport (isfound, petid, createddate)
+            VALUES (
+                %s,
+                %s,
+                COALESCE(%s::date, CURRENT_DATE)
+            )
+            RETURNING reportid, isfound, petid, createddate
+            """,
+            (is_found, pet_id, created_date),
+        )
+        created_report = cursor.fetchone()
+
+        cursor.execute(
+            """
+            SELECT
+                c.chipid AS chip_id,
+                c.islost,
+                c.location AS last_known_location,
+                c.implantationdate AS implantation_date
+            FROM chip c
+            WHERE c.petid = %s
+            ORDER BY c.chipid DESC
+            LIMIT 1
+            """,
+            (pet_id,),
+        )
+        updated_chip = cursor.fetchone()
+
+        conn.commit()
+        return jsonify(
+            {
+                "message": "Lost/found report saved and chip status synchronized.",
+                "report": vet_serialize_records([created_report])[0],
+                "chip": vet_serialize_records([updated_chip])[0] if updated_chip else None,
+            }
+        ), 201
+    except Exception as exc:
+        if conn:
+            conn.rollback()
         return jsonify({"error": str(exc)}), 500
     finally:
         if cursor:
