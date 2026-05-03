@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
 import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
+import ChipStatusReporter from "./chip_status_reporter";
+import LogoutMenuLink from "../logout_menu_link";
+import ReferralCreator from "./referral_creator";
 
 type VetTimelinePet = {
   petid: number;
@@ -37,6 +40,9 @@ type VetTimelineVisit = {
   notes: string;
   veterinarian_name: string;
   branch_name: string;
+  linked_pet_id: number | null;
+  linked_pet_name: string | null;
+  owner_level_event: boolean;
 };
 
 type VetTimelinePrescription = {
@@ -53,6 +59,12 @@ type VetTimelineReferral = {
   diagnosis: string | null;
   referrer_name: string;
   referee_name: string;
+};
+
+type VetTimelineReferralTarget = {
+  veterinarianid: number;
+  veterinarian_name: string;
+  branch_name: string;
 };
 
 type MicrochipStatus = "Active" | "Reported Lost" | "Found";
@@ -81,12 +93,15 @@ type VetTimelineResponse = {
   visit_events: VetTimelineVisit[];
   prescription_events: VetTimelinePrescription[];
   referral_events: VetTimelineReferral[];
+  referral_targets: VetTimelineReferralTarget[];
   microchip?: VetTimelineMicrochip | null;
+  timeline_notice?: string | null;
 };
 
 type VetTimelinePageProps = {
   searchParams?: Promise<{
     petId?: VetSearchValue;
+    openReferral?: VetSearchValue;
   }>;
 };
 
@@ -99,6 +114,7 @@ type TimelineCardItem = {
   title: string;
   body: string;
   pillClass: string;
+  appointmentId: number | null;
 };
 
 function withDoctorPrefix(name: string): string {
@@ -178,9 +194,14 @@ function buildTimelineCards(
     sortKey: toSortableTimestamp(visit.datetime),
     dateText: formatDate(visit.datetime),
     actorText: `${visit.veterinarian_name} · ${visit.branch_name}`,
-    title: "Visit summary",
-    body: visit.notes,
+    title: `Visit #${visit.appointmentid}`,
+    body: `${
+      visit.owner_level_event
+        ? "Owner-level appointment (appointment-to-pet relation is not defined in schema)."
+        : `Pet: ${visit.linked_pet_name ?? "-"}`
+    }${visit.notes ? ` · Notes: ${visit.notes}` : ""}`,
     pillClass: `${styles.pill} ${styles.pillInfo}`,
+    appointmentId: visit.appointmentid,
   }));
 
   const vaccinationCards: TimelineCardItem[] = vaccinations.map((record) => ({
@@ -192,6 +213,7 @@ function buildTimelineCards(
     title: record.vaccine_name,
     body: `Frequency: ${record.frequency ?? "-"} · Next due: ${formatDate(record.nextduedate)}`,
     pillClass: `${styles.pill} ${styles.pillOk}`,
+    appointmentId: null,
   }));
 
   const prescriptionCards: TimelineCardItem[] = prescriptions.map((prescription) => ({
@@ -205,6 +227,7 @@ function buildTimelineCards(
       prescription.medicines ? ` · Medicines: ${prescription.medicines}` : ""
     }`,
     pillClass: `${styles.pill} ${styles.pillWait}`,
+    appointmentId: null,
   }));
 
   return [...visitCards, ...vaccinationCards, ...prescriptionCards].sort(
@@ -232,6 +255,10 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
   const resolvedSearchParams = (await searchParams) ?? {};
   const requestedPetIdRaw = vetGetSearchValue(resolvedSearchParams.petId);
   const requestedPetId = requestedPetIdRaw ? vetParsePositiveInt(requestedPetIdRaw, 0) || null : null;
+  const requestedOpenReferralRaw = vetGetSearchValue(resolvedSearchParams.openReferral);
+  const autoOpenReferral =
+    requestedOpenReferralRaw === "1" ||
+    requestedOpenReferralRaw?.toLowerCase() === "true";
 
   const homeHref = "/vet/dashboard";
   const vaccinationsHref = "/vet/vaccinations";
@@ -265,15 +292,14 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
   const timelineEventCount = timelineCards.length;
   const referralCount = data.referral_events.length;
   const visitPreview = data.visit_events.slice(0, 6);
-  const microchipSnapshot = data.selected_pet
-    ? {
-        chipId: data.microchip?.chip_id ?? `CHIP-${String(data.selected_pet.petid).padStart(6, "0")}`,
-        implantationDate: data.microchip?.implantation_date ?? null,
-        registeredBy: data.microchip?.registered_by ?? vetName,
-        status: data.microchip?.status ?? "Active",
-        lastKnownLocation: data.microchip?.last_known_location ?? data.profile.branch_name,
-      }
-    : null;
+  const hasMicrochipRecord = Boolean(data.microchip);
+  const microchipSnapshot = {
+    chipId: data.microchip?.chip_id ?? null,
+    implantationDate: data.microchip?.implantation_date ?? null,
+    registeredBy: data.microchip?.registered_by ?? null,
+    status: data.microchip?.status ?? null,
+    lastKnownLocation: data.microchip?.last_known_location ?? null,
+  };
 
   return (
     <main className={styles.page}>
@@ -298,7 +324,7 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
                   <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
+                  <LogoutMenuLink />
                 </div>
               </details>
             </div>
@@ -312,6 +338,9 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
               <p className={styles.sub}>
                 Track visits, prescriptions, and vaccination history for the selected pet.
               </p>
+              {data.timeline_notice ? (
+                <p className={styles.pageSubtitle}>{data.timeline_notice}</p>
+              ) : null}
               <div className={`${styles.kpiRow} ${styles.mt2}`}>
                 <div className={styles.kpi}>
                   <div className={styles.label}>Timeline events</div>
@@ -332,7 +361,10 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
               <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
                 Create visit record
               </Link>
-              <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+              <Link
+                href="/vet/timeline?openReferral=1#create-referral"
+                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+              >
                 Create referral
               </Link>
             </section>
@@ -359,7 +391,10 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                       visitPreview.map((visit) => (
                         <tr key={`visit-preview-${visit.appointmentid}`}>
                           <td>{formatClock(visit.datetime)}</td>
-                          <td>{data.selected_pet?.pet_name ?? "-"}</td>
+                          <td>
+                            {visit.linked_pet_name ??
+                              (visit.owner_level_event ? "Owner-level (pet unspecified)" : "-")}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -370,152 +405,194 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
           </aside>
           <div className={styles.splitDivider} aria-hidden />
 
-          <section className={`${styles.card} ${styles.pageSplitMain}`}>
-          <h1 className={styles.pageTitle}>Medical Timeline</h1>
-          <p className={styles.pageSubtitle}>
-            Complete history: diagnoses, prescriptions, vaccinations, referrals
-          </p>
-
-          <form method="get" className={styles.formRow}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Pet</label>
-              <select
-                className={styles.inputControl}
-                name="petId"
-                defaultValue={data.selected_pet_id ? String(data.selected_pet_id) : ""}
-              >
-                {data.available_pets.map((pet) => (
-                  <option key={pet.petid} value={pet.petid}>
-                    {pet.pet_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Apply</label>
-              <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
-                Load timeline
-              </button>
-            </div>
-          </form>
-
-          {data.selected_pet && (
-            <div className={`${styles.tile} ${styles.mt2}`}>
-              <div className={styles.tileTitle}>{data.selected_pet.pet_name}</div>
-              <p className={styles.tileSub}>
-                {data.selected_pet.species ?? "-"} · {data.selected_pet.breed ?? "-"} · Age:{" "}
-                {data.selected_pet.age ?? "-"} · Owner: {data.selected_pet.owner_name}
+          <div className={styles.pageSplitMain}>
+            <section className={styles.card}>
+              <h1 className={styles.pageTitle}>Medical Timeline</h1>
+              <p className={styles.pageSubtitle}>
+                Complete history: diagnoses, prescriptions, vaccinations, referrals
               </p>
-            </div>
-          )}
 
-          {microchipSnapshot && (
-            <div className={`${styles.tile} ${styles.mt2}`}>
-              <div className={styles.tileTitle}>Microchip Information</div>
-              <p className={styles.tileSub}>Chip ID: {microchipSnapshot.chipId}</p>
-              <p className={styles.tileSub}>
-                Implantation date: {formatDate(microchipSnapshot.implantationDate)}
-              </p>
-              <p className={styles.tileSub}>Registered by: {microchipSnapshot.registeredBy}</p>
-              <p className={styles.tileSub}>
-                Status:{" "}
-                <span className={getMicrochipStatusPillClass(microchipSnapshot.status)}>
-                  {microchipSnapshot.status}
-                </span>
-              </p>
-              <p className={styles.tileSub}>
-                Last known location: {microchipSnapshot.lastKnownLocation ?? "-"}
-              </p>
-            </div>
-          )}
+              <form method="get" className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Pet</label>
+                  <select
+                    className={styles.inputControl}
+                    name="petId"
+                    defaultValue={data.selected_pet_id ? String(data.selected_pet_id) : ""}
+                  >
+                    {data.available_pets.map((pet) => (
+                      <option key={pet.petid} value={pet.petid}>
+                        {pet.pet_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Apply</label>
+                  <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
+                    Load timeline
+                  </button>
+                </div>
+              </form>
+            </section>
 
-          <div className={`${styles.card} ${styles.mt2}`}>
-            <div className={styles.eventHeader}>
-              <div>
-                <h2 className={styles.pageTitle}>Vaccination plan</h2>
-                <p className={styles.pageSubtitle}>Active schedule based on species, breed, and age</p>
-              </div>
-            </div>
-            <div className={`${styles.vaccinationMetaPanels} ${styles.mt2}`}>
-              {data.vaccination_plans.length === 0 ? (
+            {data.selected_pet && (
+              <section className={styles.card}>
+                <h2 className={styles.pageTitle}>Selected Pet</h2>
                 <div className={styles.tile}>
-                  <p className={styles.tileSub}>No vaccination plan defined for this pet.</p>
+                  <div className={styles.tileTitle}>{data.selected_pet.pet_name}</div>
+                  <p className={styles.tileSub}>
+                    {data.selected_pet.species ?? "-"} · {data.selected_pet.breed ?? "-"} · Age:{" "}
+                    {data.selected_pet.age ?? "-"} · Owner: {data.selected_pet.owner_name}
+                  </p>
                 </div>
-              ) : (
-                data.vaccination_plans.map((plan) => (
-                  <div key={plan.planid} className={styles.tile}>
-                    <div className={styles.tileTitle}>Plan #{plan.planid}</div>
-                    <p className={styles.tileSub}>
-                      Next due: {formatDate(plan.nextvaccinationdate)} · {plan.admin_vet_name} ·{" "}
-                      {plan.branch_name}
-                    </p>
-                    <span className={`${styles.pill} ${styles.pillOk}`}>On schedule</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className={`${styles.tileStack} ${styles.mt2}`}>
-            {timelineCards.length === 0 ? (
-              <div className={styles.eventCard}>
-                <p className={styles.mutedSmall}>No timeline event found for this pet.</p>
-              </div>
-            ) : (
-              timelineCards.map((event) => (
-                <div key={event.id} className={styles.eventCard}>
-                  <div className={styles.eventHeader}>
-                    <div>
-                      <span className={event.pillClass}>{event.kind}</span>
-                      <span className={styles.pageSubtitle} style={{ marginLeft: 8 }}>
-                        {event.dateText}
-                      </span>
-                    </div>
-                    <div className={styles.tileTitle}>{event.actorText}</div>
-                  </div>
-                  <h3 className={styles.eventTitle}>{event.title}</h3>
-                  <p className={styles.mutedSmall}>{event.body}</p>
-                </div>
-              ))
+              </section>
             )}
-          </div>
 
-          <div className={`${styles.card} ${styles.mt2}`}>
-            <h2 className={styles.pageTitle}>Recent referrals by this veterinarian</h2>
-            <div className={`${styles.tableWrap} ${styles.mt1}`}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Referrer</th>
-                    <th>Referee</th>
-                    <th>Diagnosis</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.referral_events.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className={styles.emptyCell}>
-                        No referral event found.
-                      </td>
-                    </tr>
+            <div className={styles.timelinePairGrid}>
+              <section className={styles.card}>
+                <h2 className={styles.pageTitle}>Microchip Information</h2>
+                <div className={styles.tile}>
+                  {hasMicrochipRecord ? (
+                    <>
+                      <p className={styles.tileSub}>Chip ID: {microchipSnapshot.chipId}</p>
+                      <p className={styles.tileSub}>
+                        Implantation date: {formatDate(microchipSnapshot.implantationDate)}
+                      </p>
+                      <p className={styles.tileSub}>Registered by: {microchipSnapshot.registeredBy}</p>
+                      <p className={styles.tileSub}>
+                        Status:{" "}
+                        {microchipSnapshot.status ? (
+                          <span className={getMicrochipStatusPillClass(microchipSnapshot.status)}>
+                            {microchipSnapshot.status}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </p>
+                      <p className={styles.tileSub}>
+                        Last known location: {microchipSnapshot.lastKnownLocation ?? "-"}
+                      </p>
+                    </>
                   ) : (
-                    data.referral_events.map((referral, index) => (
-                      <tr key={`${referral.referraldate}-${index}`}>
-                        <td>{formatDate(referral.referraldate)}</td>
-                        <td>{referral.referrer_name}</td>
-                        <td>{referral.referee_name}</td>
-                        <td>{referral.diagnosis ?? "-"}</td>
-                      </tr>
+                    <p className={styles.tileSub}>No microchip record is registered for this pet.</p>
+                  )}
+                  {data.selected_pet_id ? (
+                    <ChipStatusReporter vetId={selectedVetId} petId={data.selected_pet_id} />
+                  ) : null}
+                </div>
+              </section>
+
+              <section className={styles.card}>
+                <div className={styles.eventHeader}>
+                  <div>
+                    <h2 className={styles.pageTitle}>Vaccination plan</h2>
+                    <p className={styles.pageSubtitle}>Active schedule based on species, breed, and age</p>
+                  </div>
+                </div>
+                <div className={`${styles.vaccinationMetaPanels} ${styles.mt2}`}>
+                  {data.vaccination_plans.length === 0 ? (
+                    <div className={styles.tile}>
+                      <p className={styles.tileSub}>No vaccination plan defined for this pet.</p>
+                    </div>
+                  ) : (
+                    data.vaccination_plans.map((plan) => (
+                      <div key={plan.planid} className={styles.tile}>
+                        <div className={styles.tileTitle}>Plan #{plan.planid}</div>
+                        <p className={styles.tileSub}>
+                          Next due: {formatDate(plan.nextvaccinationdate)} · {plan.admin_vet_name} ·{" "}
+                          {plan.branch_name}
+                        </p>
+                        <span className={`${styles.pill} ${styles.pillOk}`}>On schedule</span>
+                      </div>
                     ))
                   )}
-                </tbody>
-              </table>
+                </div>
+              </section>
+
+              <section className={styles.card}>
+                <h2 className={styles.pageTitle}>Timeline Events</h2>
+                <div className={`${styles.tileStack} ${styles.mt2}`}>
+                  {timelineCards.length === 0 ? (
+                    <div className={styles.eventCard}>
+                      <p className={styles.mutedSmall}>No timeline event found for this pet.</p>
+                    </div>
+                  ) : (
+                    timelineCards.map((event) => (
+                      <div key={event.id} className={styles.eventCard}>
+                        <div className={styles.eventHeader}>
+                          <div>
+                            <span className={event.pillClass}>{event.kind}</span>
+                            <span className={styles.pageSubtitle} style={{ marginLeft: 8 }}>
+                              {event.dateText}
+                            </span>
+                          </div>
+                          <div className={styles.tileTitle}>{event.actorText}</div>
+                        </div>
+                        <h3 className={styles.eventTitle}>{event.title}</h3>
+                        <p className={styles.mutedSmall}>{event.body}</p>
+                        {event.appointmentId ? (
+                          <div className={styles.eventActionRow}>
+                            <Link
+                              href={{
+                                pathname: `/vet/appointments/${event.appointmentId}`,
+                                query: data.selected_pet_id ? { petId: data.selected_pet_id } : {},
+                              }}
+                              className={`${styles.btn} ${styles.mt1}`}
+                            >
+                              Open appointment
+                            </Link>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section id="create-referral" className={styles.card}>
+                <h2 className={styles.pageTitle}>Recent referrals by this veterinarian</h2>
+                <ReferralCreator
+                  vetId={selectedVetId}
+                  referralTargets={data.referral_targets}
+                  autoOpen={autoOpenReferral}
+                />
+                <div className={`${styles.tableWrap} ${styles.mt1}`}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Referrer</th>
+                        <th>Referee</th>
+                        <th>Diagnosis</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.referral_events.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className={styles.emptyCell}>
+                            No referral event found.
+                          </td>
+                        </tr>
+                      ) : (
+                        data.referral_events.map((referral, index) => (
+                          <tr key={`${referral.referraldate}-${index}`}>
+                            <td>{formatDate(referral.referraldate)}</td>
+                            <td>{referral.referrer_name}</td>
+                            <td>{referral.referee_name}</td>
+                            <td>{referral.diagnosis ?? "-"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </div>
-        </section>
       </div>
       </div>
     </main>
   );
 }
+

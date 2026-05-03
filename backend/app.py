@@ -4,6 +4,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from vet.vet_dashboard_api import vet_dashboard_bp
 from vet.vet_appointments_api import vet_appointments_bp
+from vet.vet_profile_api import vet_profile_bp
 from vet.vet_timeline_api import vet_timeline_bp
 from general import general_bp
 from manager import manager_bp
@@ -87,6 +88,7 @@ def db_check():
 # Register veterinarian-specific API routes from separate module files.
 app.register_blueprint(vet_dashboard_bp)
 app.register_blueprint(vet_appointments_bp)
+app.register_blueprint(vet_profile_bp)
 app.register_blueprint(vet_timeline_bp)
 
 if __name__ == '__main__':

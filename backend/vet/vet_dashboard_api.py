@@ -115,29 +115,27 @@ def vet_get_dashboard():
         cursor.execute(
             """
             SELECT
-                p.name AS pet_name,
-                COALESCE(m.name, 'Unknown') AS vaccine_name,
-                vr.shotdate,
-                vr.nextduedate,
+                vsv.petid,
+                vsv.petname AS pet_name,
+                COALESCE(vsv.vaccinename, 'Unknown') AS vaccine_name,
+                vsv.shotdate,
+                vsv.nextduedate,
                 COALESCE(u.name, 'Unknown') AS admin_vet_name,
                 CASE
-                    WHEN vr.nextduedate IS NULL THEN 'Unknown'
-                    WHEN vr.nextduedate < CURRENT_DATE THEN
-                        'Overdue ' || (CURRENT_DATE - vr.nextduedate)::text || 'd'
-                    WHEN vr.nextduedate <= CURRENT_DATE + 30 THEN
-                        'Due in ' || (vr.nextduedate - CURRENT_DATE)::text || 'd'
+                    WHEN vsv.nextduedate IS NULL THEN 'Unknown'
+                    WHEN vsv.vaccinationstatus = 'Overdue' THEN
+                        'Overdue ' || (CURRENT_DATE - vsv.nextduedate)::text || 'd'
+                    WHEN vsv.vaccinationstatus = 'Upcoming' THEN
+                        'Due in ' || (vsv.nextduedate - CURRENT_DATE)::text || 'd'
                     ELSE 'Normal'
                 END AS vaccination_status
-            FROM vaccinationrecord vr
-            JOIN pet p ON p.petid = vr.petid
+            FROM vaccinationstatusview vsv
+            JOIN vaccinationrecord vr ON vr.recordid = vsv.recordid
             JOIN vaccinationplan vp ON vp.planid = vr.planid
             LEFT JOIN users u ON u.userid = vp.veterinarianid
-            LEFT JOIN involves i ON i.recordid = vr.recordid
-            LEFT JOIN vaccine v ON v.vaccineid = i.vaccineid
-            LEFT JOIN medicine m ON m.medicineid = v.vaccineid
             WHERE vp.veterinarianid = %s
-            ORDER BY vr.nextduedate ASC NULLS LAST, vr.shotdate DESC NULLS LAST
-            LIMIT 12
+            ORDER BY vsv.nextduedate ASC NULLS LAST, vsv.shotdate DESC NULLS LAST
+            LIMIT 40
             """,
             (vet_id,),
         )

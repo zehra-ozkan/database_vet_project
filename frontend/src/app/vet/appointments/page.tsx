@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
+import LogoutMenuLink from "../logout_menu_link";
 import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
 
 type VetAppointmentsProfile = {
@@ -23,6 +24,14 @@ type VetAppointmentItem = {
   status: "Completed" | "Scheduled" | "Pending";
 };
 
+type VetIncomingReferralItem = {
+  referraldate: string;
+  diagnosis: string | null;
+  referrer_vet_id: number;
+  referrer_name: string;
+  referrer_branch_name: string;
+};
+
 type VetAppointmentsResponse = {
   vet_id: number;
   filters: {
@@ -32,6 +41,7 @@ type VetAppointmentsResponse = {
   profile: VetAppointmentsProfile;
   available_branches: VetBranchOption[];
   appointments: VetAppointmentItem[];
+  incoming_referrals: VetIncomingReferralItem[];
 };
 
 type VetAppointmentsPageProps = {
@@ -173,7 +183,7 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
                   <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
+                  <LogoutMenuLink />
                 </div>
               </details>
             </div>
@@ -207,7 +217,10 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
               <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
                 Create visit record
               </Link>
-              <Link href="/vet/timeline" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
+              <Link
+                href="/vet/timeline?openReferral=1#create-referral"
+                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
+              >
                 Create referral
               </Link>
             </section>
@@ -245,105 +258,143 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
           </aside>
           <div className={styles.splitDivider} aria-hidden />
 
-          <section className={`${styles.card} ${styles.pageSplitMain}`}>
-            <h1 className={styles.pageTitle}>My appointments</h1>
-            <p className={styles.pageSubtitle}>
-              Open appointments to view medical history and create visit records
-            </p>
+          <div className={styles.pageSplitMain}>
+            <section className={styles.card}>
+              <h1 className={styles.pageTitle}>My appointments</h1>
+              <p className={styles.pageSubtitle}>
+                Open appointments to view medical history and create visit records
+              </p>
 
-            <form method="get" className={styles.formRow}>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Branch</label>
-                <select
-                  name="branchId"
-                  className={styles.inputControl}
-                  defaultValue={data.filters.branch_id ? String(data.filters.branch_id) : ""}
-                >
-                  <option value="">All branches</option>
-                  {data.available_branches.map((branch) => (
-                    <option key={branch.branchid} value={branch.branchid}>
-                      {branch.branch_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Date</label>
-                <input
-                  type="date"
-                  name="date"
-                  className={styles.inputControl}
-                  defaultValue={data.filters.date ?? ""}
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Apply</label>
-                <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
-                  Filter
-                </button>
-              </div>
-            </form>
+              <form method="get" className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Branch</label>
+                  <select
+                    name="branchId"
+                    className={styles.inputControl}
+                    defaultValue={data.filters.branch_id ? String(data.filters.branch_id) : ""}
+                  >
+                    <option value="">All branches</option>
+                    {data.available_branches.map((branch) => (
+                      <option key={branch.branchid} value={branch.branchid}>
+                        {branch.branch_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Date</label>
+                  <input
+                    type="date"
+                    name="date"
+                    className={styles.inputControl}
+                    defaultValue={data.filters.date ?? ""}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Apply</label>
+                  <button type="submit" className={`${styles.btn} ${styles.btnCompact}`}>
+                    Filter
+                  </button>
+                </div>
+              </form>
 
-            <div className={`${styles.tableWrap} ${styles.mt2}`}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Pet</th>
-                    <th>Owner</th>
-                    <th>Branch</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.appointments.length === 0 ? (
+              <div className={`${styles.tableWrap} ${styles.mt2}`}>
+                <table>
+                  <thead>
                     <tr>
-                      <td colSpan={7} className={styles.emptyCell}>
-                        No appointments found for the selected filters.
-                      </td>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Pet</th>
+                      <th>Owner</th>
+                      <th>Branch</th>
+                      <th>Status</th>
+                      <th>Action</th>
                     </tr>
-                  ) : (
-                    data.appointments.map((appointment) => (
-                      <tr key={appointment.appointmentid}>
-                        <td>{formatShortDate(appointment.datetime)}</td>
-                        <td>{formatClock(appointment.datetime)}</td>
-                        <td>{appointment.pet_name}</td>
-                        <td>{appointment.owner_name}</td>
-                        <td>{appointment.branch_name}</td>
-                        <td>
-                          <span className={getStatusPillClass(appointment.status)}>
-                            {appointment.status}
-                          </span>
-                        </td>
-                        <td>
-                          <Link
-                            href={{
-                              pathname: `/vet/appointments/${appointment.appointmentid}`,
-                              query: {
-                                petName: appointment.pet_name,
-                                ownerName: appointment.owner_name,
-                                datetime: appointment.datetime,
-                                branchName: appointment.branch_name,
-                                status: appointment.status,
-                                type: "Consultation",
-                              },
-                            }}
-                            className={styles.btn}
-                          >
-                            Open
-                          </Link>
+                  </thead>
+                  <tbody>
+                    {data.appointments.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className={styles.emptyCell}>
+                          No appointments found for the selected filters.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                    ) : (
+                      data.appointments.map((appointment) => (
+                        <tr key={appointment.appointmentid}>
+                          <td>{formatShortDate(appointment.datetime)}</td>
+                          <td>{formatClock(appointment.datetime)}</td>
+                          <td>{appointment.pet_name}</td>
+                          <td>{appointment.owner_name}</td>
+                          <td>{appointment.branch_name}</td>
+                          <td>
+                            <span className={getStatusPillClass(appointment.status)}>
+                              {appointment.status}
+                            </span>
+                          </td>
+                          <td>
+                            <Link
+                              href={{
+                                pathname: `/vet/appointments/${appointment.appointmentid}`,
+                                query: {
+                                  petName: appointment.pet_name,
+                                  ownerName: appointment.owner_name,
+                                  datetime: appointment.datetime,
+                                  branchName: appointment.branch_name,
+                                  status: appointment.status,
+                                  type: "Consultation",
+                                },
+                              }}
+                              className={styles.btn}
+                            >
+                              Open
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={styles.card}>
+              <h2 className={styles.pageTitle}>Incoming Referrals</h2>
+              <p className={styles.pageSubtitle}>Referrals assigned to you by other veterinarians</p>
+              <div className={`${styles.tableWrap} ${styles.mt1}`}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>From vet</th>
+                      <th>Branch</th>
+                      <th>Diagnosis</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.incoming_referrals.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className={styles.emptyCell}>
+                          No incoming referral found.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.incoming_referrals.map((referral, index) => (
+                        <tr key={`${referral.referraldate}-${referral.referrer_vet_id}-${index}`}>
+                          <td>{formatShortDate(referral.referraldate)}</td>
+                          <td>{referral.referrer_name}</td>
+                          <td>{referral.referrer_branch_name}</td>
+                          <td>{referral.diagnosis ?? "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </main>
   );
 }
+

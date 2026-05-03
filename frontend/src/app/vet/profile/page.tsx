@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
 import { vetFetchJson, vetGetLoggedInVetId } from "../vet_http";
+import LogoutMenuLink from "../logout_menu_link";
+import ProfileEditor from "./profile_editor";
 
 type VetProfileInfo = {
   veterinarian_name: string;
@@ -16,6 +18,7 @@ type VetProfileInfo = {
 };
 
 type VetProfileResponse = {
+  vet_id: number;
   profile: VetProfileInfo;
 };
 
@@ -44,7 +47,7 @@ function getInitials(name: string): string {
 async function fetchVetProfile(
   vetId: number
 ): Promise<{ data: VetProfileResponse | null; error: string | null }> {
-  return vetFetchJson<VetProfileResponse>(`/api/vet/dashboard?vetId=${vetId}`);
+  return vetFetchJson<VetProfileResponse>(`/api/vet/profile?vetId=${vetId}`);
 }
 
 export default async function VetProfilePage() {
@@ -104,7 +107,7 @@ export default async function VetProfilePage() {
                 <summary className={styles.profileTrigger}>{initials}</summary>
                 <div className={styles.profileMenu}>
                   <Link href={profileHref}>My Profile</Link>
-                  <a href="#">Logout</a>
+                  <LogoutMenuLink />
                 </div>
               </details>
             </div>
@@ -149,37 +152,39 @@ export default async function VetProfilePage() {
           </aside>
           <div className={styles.splitDivider} aria-hidden />
 
-          <section className={`${styles.card} ${styles.pageSplitMain}`}>
-            <h1 className={styles.pageTitle}>My Profile</h1>
-            <p className={styles.pageSubtitle}>
-              Profile editing UI is ready. Save endpoint can be connected in the next step.
-            </p>
-            {error ? <p className={styles.errorText}>{error}</p> : null}
+          <section className={styles.pageSplitMain}>
+            <ProfileEditor
+              vetId={data.vet_id}
+              initialProfile={{
+                email: data.profile.email,
+                phonenumber: data.profile.phonenumber,
+                speciesexpertise: data.profile.speciesexpertise,
+                maxdailyappointmentlimit: data.profile.maxdailyappointmentlimit,
+              }}
+            />
 
-            <div className={`${styles.formRow} ${styles.mt2}`}>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Name</label>
-                <input className={styles.inputControl} defaultValue={data.profile.veterinarian_name} readOnly />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Email</label>
-                <input className={styles.inputControl} defaultValue={data.profile.email ?? ""} readOnly />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Phone number</label>
-                <input className={styles.inputControl} defaultValue={data.profile.phonenumber ?? ""} readOnly />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Species expertise</label>
-                <input className={styles.inputControl} defaultValue={data.profile.speciesexpertise ?? ""} readOnly />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Branch</label>
-                <input className={styles.inputControl} defaultValue={branchTitle} readOnly />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Branch location</label>
-                <input className={styles.inputControl} defaultValue={branchLocation} readOnly />
+            <div className={styles.card}>
+              <h2 className={styles.pageTitle}>Account snapshot</h2>
+              <p className={styles.pageSubtitle}>Read-only fields synced from SQL records.</p>
+              <div className={`${styles.vaccinationMetaPanels} ${styles.mt2}`}>
+                <div className={styles.tile}>
+                  <div className={styles.tileTitle}>Full name</div>
+                  <p className={styles.tileSub}>{data.profile.veterinarian_name}</p>
+                </div>
+                <div className={styles.tile}>
+                  <div className={styles.tileTitle}>Branch</div>
+                  <p className={styles.tileSub}>
+                    {branchTitle} · {branchLocation}
+                  </p>
+                </div>
+                <div className={styles.tile}>
+                  <div className={styles.tileTitle}>Rating</div>
+                  <p className={styles.tileSub}>{data.profile.rating ?? "-"}</p>
+                </div>
+                <div className={styles.tile}>
+                  <div className={styles.tileTitle}>Current daily limit</div>
+                  <p className={styles.tileSub}>{data.profile.maxdailyappointmentlimit ?? "-"}</p>
+                </div>
               </div>
             </div>
           </section>
@@ -188,3 +193,4 @@ export default async function VetProfilePage() {
     </main>
   );
 }
+

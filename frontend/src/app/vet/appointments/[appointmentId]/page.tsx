@@ -2,23 +2,113 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import styles from "../../dashboard/vet_dashboard_page.module.css";
-import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, type VetSearchValue } from "../../vet_http";
+import {
+  vetFetchJson,
+  vetGetLoggedInVetId,
+  vetGetSearchValue,
+  vetParsePositiveInt,
+  type VetSearchValue,
+} from "../../vet_http";
+import AppointmentActions from "./appointment_actions";
 
-type VetAppointmentItem = {
-  appointmentid: number;
-  datetime: string;
+type VetAppointmentDetailPet = {
+  petid: number;
   pet_name: string;
-  owner_name: string;
-  branch_name: string;
-  status: "Completed" | "Scheduled" | "Pending";
+  species: string | null;
+  breed: string | null;
+  age: number | null;
+  sex: string | null;
 };
 
-type VetAppointmentsResponse = {
-  profile: {
-    veterinarian_name: string;
+type VetAppointmentMedicalHistoryItem = {
+  historyid: string;
+  pastdiagnosis: string | null;
+  allergies: string | null;
+};
+
+type VetAppointmentPrescriptionHistoryItem = {
+  prescriptionid: number;
+  prescriptiondate: string | null;
+  treatment: string | null;
+  medicines: string;
+  veterinarian_name: string;
+};
+
+type VetAppointmentVaccinationHistoryItem = {
+  recordid: number;
+  shotdate: string | null;
+  nextduedate: string | null;
+  frequency: string | null;
+  vaccine_name: string;
+};
+
+type VetAppointmentMedicineOption = {
+  medicineid: number;
+  name: string;
+  quantity: number | null;
+  status: string | null;
+};
+
+type VetAppointmentReferralTarget = {
+  veterinarianid: number;
+  veterinarian_name: string;
+  branch_name: string;
+};
+
+type VetLowStockMedicineItem = {
+  medicineid: number;
+  medicinename: string;
+  quantity: number | null;
+  threshold: number | null;
+  status: string | null;
+  expiracydate: string | null;
+};
+
+type VetUnpaidBillItem = {
+  billno: number;
+  appointmentid: number;
+  duedate: string | null;
+  consultationfee: number | null;
+  treatmentcost: number | null;
+  medicationcost: number | null;
+};
+
+type VetAppointmentDetailResponse = {
+  vet_id: number;
+  appointment: {
+    appointmentid: number;
+    datetime: string;
+    atype: string;
+    vaccinationplanid: number | null;
+    petownerid: number;
+    owner_name: string;
     branch_name: string;
   };
-  appointments: VetAppointmentItem[];
+  pet_options: VetAppointmentDetailPet[];
+  selected_pet_id: number | null;
+  selected_pet: VetAppointmentDetailPet | null;
+  medical_history: VetAppointmentMedicalHistoryItem[];
+  prescription_history: VetAppointmentPrescriptionHistoryItem[];
+  vaccination_history: VetAppointmentVaccinationHistoryItem[];
+  latest_visit_summary: {
+    visitid: string;
+    appointmentid: number;
+    notes: string;
+  } | null;
+  is_completed: boolean;
+  existing_bill: {
+    billno: number;
+    appointmentid: number;
+    consultationfee: number;
+    treatmentcost: number;
+    medicationcost: number;
+    duedate: string;
+    paid: boolean;
+  } | null;
+  available_medicines: VetAppointmentMedicineOption[];
+  low_stock_medicines: VetLowStockMedicineItem[];
+  unpaid_owner_bills: VetUnpaidBillItem[];
+  referral_targets: VetAppointmentReferralTarget[];
 };
 
 type AppointmentDetailPageProps = {
@@ -26,12 +116,7 @@ type AppointmentDetailPageProps = {
     appointmentId: string;
   }>;
   searchParams?: Promise<{
-    petName?: VetSearchValue;
-    ownerName?: VetSearchValue;
-    datetime?: VetSearchValue;
-    branchName?: VetSearchValue;
-    status?: VetSearchValue;
-    type?: VetSearchValue;
+    petId?: VetSearchValue;
   }>;
 };
 
@@ -58,11 +143,44 @@ function formatClock(value: string): string {
   });
 }
 
-async function fetchVetAppointments(vetId: number): Promise<{ data: VetAppointmentsResponse | null; error: string | null }> {
-  return vetFetchJson<VetAppointmentsResponse>(`/api/vet/appointments?vetId=${vetId}`);
+function formatNullableDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  return formatDate(value);
 }
 
-export default async function AppointmentDetailPage({ params, searchParams }: AppointmentDetailPageProps) {
+function formatDateTimeLocalInput(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+async function fetchVetAppointmentDetail(
+  vetId: number,
+  appointmentId: number,
+  petId: number | null
+): Promise<{ data: VetAppointmentDetailResponse | null; error: string | null }> {
+  const queryParts = [`vetId=${vetId}`];
+  if (petId) {
+    queryParts.push(`petId=${petId}`);
+  }
+  return vetFetchJson<VetAppointmentDetailResponse>(
+    `/api/vet/appointments/${appointmentId}/detail?${queryParts.join("&")}`
+  );
+}
+
+export default async function AppointmentDetailPage({
+  params,
+  searchParams,
+}: AppointmentDetailPageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
     redirect("/vet/dashboard");
@@ -75,27 +193,33 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
   }
 
   const resolvedSearchParams = (await searchParams) ?? {};
-  const fallbackPetName = vetGetSearchValue(resolvedSearchParams.petName) ?? "Unknown pet";
-  const fallbackOwnerName = vetGetSearchValue(resolvedSearchParams.ownerName) ?? "Unknown owner";
-  const fallbackDatetime = vetGetSearchValue(resolvedSearchParams.datetime) ?? "";
-  const fallbackBranchName = vetGetSearchValue(resolvedSearchParams.branchName) ?? "Unknown branch";
-  const fallbackStatus = vetGetSearchValue(resolvedSearchParams.status) ?? "Pending";
-  const fallbackType = vetGetSearchValue(resolvedSearchParams.type) ?? "Consultation";
+  const selectedPetIdRaw = vetGetSearchValue(resolvedSearchParams.petId);
+  const selectedPetId = selectedPetIdRaw ? vetParsePositiveInt(selectedPetIdRaw, 0) || null : null;
 
-  const { data, error } = await fetchVetAppointments(selectedVetId);
-  const appointment = data?.appointments.find((row) => row.appointmentid === appointmentId) ?? null;
+  const { data, error } = await fetchVetAppointmentDetail(selectedVetId, appointmentId, selectedPetId);
+  if (!data) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.container}>
+          <section className={styles.card}>
+            <h1 className={styles.pageTitle}>Appointment detail</h1>
+            <p className={styles.pageSubtitle}>Data load failed.</p>
+            <p className={styles.errorText}>{error}</p>
+            <Link href="/vet/appointments" className={`${styles.btn} ${styles.mt2}`}>
+              Back to appointments
+            </Link>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
-  const petName = appointment?.pet_name ?? fallbackPetName;
-  const ownerName = appointment?.owner_name ?? fallbackOwnerName;
-  const rawDatetime = appointment?.datetime ?? fallbackDatetime;
-  const branchName = appointment?.branch_name ?? fallbackBranchName;
-  const status = appointment?.status ?? fallbackStatus;
-  const appointmentType = fallbackType;
-
-  const pastDiagnoses = ["Otitis externa", "Mild gastroenteritis", "Post-op wound check"];
-  const allergies = ["No confirmed allergy on file", "Food sensitivity (chicken)"];
-  const recentVisits = ["Routine vaccination review", "Dermatology follow-up", "General wellness exam"];
-  const vaccinationHistory = ["Rabies - up to date", "DHPP - due in 21 days", "Bordetella - completed"];
+  const selectedPet = data.selected_pet;
+  const petLabel = selectedPet
+    ? `${selectedPet.pet_name} · ${selectedPet.species ?? "-"} · ${selectedPet.breed ?? "-"}`
+    : "No pet linked";
+  const latestVisitNotes = data.latest_visit_summary?.notes ?? "";
+  const defaultAppointmentDateTime = formatDateTimeLocalInput(data.appointment.datetime);
 
   return (
     <main className={styles.page}>
@@ -118,130 +242,243 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
         </header>
 
         <section className={styles.card}>
-          <h1 className={styles.pageTitle}>Appointment Detail · Visit Record</h1>
+          <div className={styles.eventHeader}>
+            <h1 className={styles.pageTitle}>Appointment Detail · Visit Record</h1>
+            <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost}`}>
+              Back to appointments
+            </Link>
+          </div>
           <p className={styles.pageSubtitle}>
-            Appointment #{appointmentId} · Fill diagnosis, treatment, prescription, referral, and vaccination updates.
+            Appointment #{data.appointment.appointmentid} · Use this page to save visit summary, prescriptions, referrals, and billing.
           </p>
-          {error ? <p className={styles.errorText}>{error}</p> : null}
-
-          <div className={`${styles.vaccinationMetaPanels} ${styles.mt2}`}>
+          <div className={`${styles.tileStack} ${styles.mt2}`}>
+            <div className={styles.tile}>
+              <div className={styles.tileTitle}>Pet selection</div>
+              <form method="get" className={styles.appointmentPetSelectionRow}>
+                <div className={styles.appointmentPetSelectionField}>
+                  <label className={styles.formLabel}>Pet</label>
+                  <select
+                    className={styles.inputControl}
+                    name="petId"
+                    defaultValue={data.selected_pet_id ? String(data.selected_pet_id) : ""}
+                  >
+                    {data.pet_options.map((pet) => (
+                      <option key={pet.petid} value={pet.petid}>
+                        {pet.pet_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" className={`${styles.btn} ${styles.appointmentPetSelectionSubmit}`}>
+                  Load pet data
+                </button>
+              </form>
+            </div>
             <div className={styles.tile}>
               <div className={styles.tileTitle}>Appointment summary</div>
-              <p className={styles.tileSub}>Pet: {petName}</p>
-              <p className={styles.tileSub}>Owner: {ownerName}</p>
+              <p className={styles.tileSub}>Owner: {data.appointment.owner_name}</p>
+              <p className={styles.tileSub}>Pet: {petLabel}</p>
               <p className={styles.tileSub}>
-                Date/time: {rawDatetime ? `${formatDate(rawDatetime)} · ${formatClock(rawDatetime)}` : "-"}
+                Date/time: {formatDate(data.appointment.datetime)} · {formatClock(data.appointment.datetime)}
               </p>
-              <p className={styles.tileSub}>Type: {appointmentType}</p>
-              <p className={styles.tileSub}>Branch: {branchName}</p>
-              <p className={styles.tileSub}>Status: {status}</p>
+              <p className={styles.tileSub}>Type: {data.appointment.atype}</p>
+              <p className={styles.tileSub}>Branch: {data.appointment.branch_name}</p>
+              <p className={styles.tileSub}>
+                Status:{" "}
+                <span className={data.is_completed ? `${styles.pill} ${styles.pillOk}` : `${styles.pill} ${styles.pillWait}`}>
+                  {data.is_completed ? "Completed" : "Pending"}
+                </span>
+              </p>
+              {data.existing_bill ? (
+                <p className={styles.tileSub}>
+                  Bill #{data.existing_bill.billno} · Due: {formatDate(data.existing_bill.duedate)}
+                </p>
+              ) : null}
             </div>
+          </div>
+        </section>
+
+        <section className={styles.card}>
+          <h2 className={styles.pageTitle}>Owner financial + branch stock checks</h2>
+          <div className={`${styles.vaccinationMetaPanels} ${styles.mt1}`}>
             <div className={styles.tile}>
-              <div className={styles.tileTitle}>Medical history snapshot</div>
-              <p className={styles.tileSub}>Past diagnoses: {pastDiagnoses.join(" · ")}</p>
-              <p className={styles.tileSub}>Allergies: {allergies.join(" · ")}</p>
-              <p className={styles.tileSub}>Recent visits: {recentVisits.join(" · ")}</p>
-              <p className={styles.tileSub}>Vaccination history: {vaccinationHistory.join(" · ")}</p>
+              <div className={styles.tileTitle}>Owner unpaid bills</div>
+              <p className={styles.tileSub}>Count: {data.unpaid_owner_bills.length}</p>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Bill</th>
+                      <th>Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.unpaid_owner_bills.length === 0 ? (
+                      <tr>
+                        <td colSpan={2} className={styles.emptyCell}>
+                          No unpaid bill found for this owner.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.unpaid_owner_bills.slice(0, 6).map((bill) => (
+                        <tr key={`${bill.billno}-${bill.appointmentid}`}>
+                          <td>#{bill.billno}</td>
+                          <td>{formatNullableDate(bill.duedate)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className={styles.tile}>
+              <div className={styles.tileTitle}>Low stock medicines (branch)</div>
+              <p className={styles.tileSub}>Count: {data.low_stock_medicines.length}</p>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Medicine</th>
+                      <th>Qty</th>
+                      <th>Threshold</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.low_stock_medicines.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className={styles.emptyCell}>
+                          No low-stock medicine found.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.low_stock_medicines.slice(0, 6).map((medicine) => (
+                        <tr key={medicine.medicineid}>
+                          <td>{medicine.medicinename}</td>
+                          <td>{medicine.quantity ?? "-"}</td>
+                          <td>{medicine.threshold ?? "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
 
         <section className={styles.card}>
-          <h2 className={styles.pageTitle}>Create Visit Record</h2>
-          <div className={`${styles.formRow} ${styles.mt1}`}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Diagnosis</label>
-              <input className={styles.inputControl} placeholder="Primary diagnosis" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Symptoms</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Symptoms observed during visit" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Treatment</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Treatment performed and plan" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Follow-up notes</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Follow-up schedule and owner instructions" />
-            </div>
+          <h2 className={styles.pageTitle}>Medical history snapshot</h2>
+          <div className={`${styles.tableWrap} ${styles.mt1}`}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Past diagnosis</th>
+                  <th>Allergies</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.medical_history.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className={styles.emptyCell}>
+                      No medical history found for selected pet.
+                    </td>
+                  </tr>
+                ) : (
+                  data.medical_history.map((item) => (
+                    <tr key={item.historyid}>
+                      <td>{item.pastdiagnosis ?? "-"}</td>
+                      <td>{item.allergies ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
 
         <section className={styles.card}>
-          <h2 className={styles.pageTitle}>Prescription</h2>
-          <div className={`${styles.formRow} ${styles.mt1}`}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Medicine</label>
-              <input className={styles.inputControl} placeholder="Medicine name" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Dosage</label>
-              <input className={styles.inputControl} placeholder="e.g. 5 mg" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Frequency</label>
-              <input className={styles.inputControl} placeholder="e.g. 2x daily" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Duration</label>
-              <input className={styles.inputControl} placeholder="e.g. 7 days" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Prescription notes</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Special instructions for owner" />
-            </div>
+          <h2 className={styles.pageTitle}>Prescription history</h2>
+          <div className={`${styles.tableWrap} ${styles.mt1}`}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Treatment</th>
+                  <th>Medicines</th>
+                  <th>Veterinarian</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.prescription_history.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className={styles.emptyCell}>
+                      No prescription history found.
+                    </td>
+                  </tr>
+                ) : (
+                  data.prescription_history.map((item) => (
+                    <tr key={item.prescriptionid}>
+                      <td>{formatNullableDate(item.prescriptiondate)}</td>
+                      <td>{item.treatment ?? "-"}</td>
+                      <td>{item.medicines || "-"}</td>
+                      <td>{item.veterinarian_name}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
 
         <section className={styles.card}>
-          <h2 className={styles.pageTitle}>Referral</h2>
-          <div className={`${styles.formRow} ${styles.mt1}`}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Referee veterinarian / clinic</label>
-              <input className={styles.inputControl} placeholder="Doctor or clinic name" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Referral reason</label>
-              <input className={styles.inputControl} placeholder="Reason for referral" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Referral notes</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Diagnosis summary and requested consultation" />
-            </div>
+          <h2 className={styles.pageTitle}>Vaccination history</h2>
+          <div className={`${styles.tableWrap} ${styles.mt1}`}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Vaccine</th>
+                  <th>Shot date</th>
+                  <th>Next due date</th>
+                  <th>Frequency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.vaccination_history.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className={styles.emptyCell}>
+                      No vaccination records found.
+                    </td>
+                  </tr>
+                ) : (
+                  data.vaccination_history.map((item) => (
+                    <tr key={item.recordid}>
+                      <td>{item.vaccine_name}</td>
+                      <td>{formatNullableDate(item.shotdate)}</td>
+                      <td>{formatNullableDate(item.nextduedate)}</td>
+                      <td>{item.frequency ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
 
-        <section className={styles.card}>
-          <h2 className={styles.pageTitle}>Vaccination</h2>
-          <div className={`${styles.formRow} ${styles.mt1}`}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Vaccine</label>
-              <input className={styles.inputControl} placeholder="Vaccine name" />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Shot date</label>
-              <input type="date" className={styles.inputControl} />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Next due date</label>
-              <input type="date" className={styles.inputControl} />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Vaccination notes</label>
-              <textarea className={styles.inputControl} rows={3} placeholder="Plan details and follow-up reminders" />
-            </div>
-          </div>
-        </section>
+        <AppointmentActions
+          key={`actions-${appointmentId}-${data.selected_pet_id ?? 0}-${data.latest_visit_summary?.visitid ?? "none"}-${data.is_completed ? "done" : "open"}`}
+          appointmentId={appointmentId}
+          vetId={selectedVetId}
+          selectedPetId={data.selected_pet_id}
+          defaultVisitNotes={latestVisitNotes}
+          defaultAppointmentDateTime={defaultAppointmentDateTime}
+          isCompleted={data.is_completed}
+          medicines={data.available_medicines}
+          referralTargets={data.referral_targets}
+        />
 
         <section className={styles.card}>
-          <div className={`${styles.formRow} ${styles.mt1}`}>
-            <button type="button" className={styles.btn}>
-              Complete visit
-            </button>
-            <button type="button" className={`${styles.btn} ${styles.ghost}`}>
-              Save draft
-            </button>
+          <div className={`${styles.eventActionRow} ${styles.mt1}`}>
             <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost}`}>
               Back to appointments
             </Link>
@@ -251,3 +488,4 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
     </main>
   );
 }
+
