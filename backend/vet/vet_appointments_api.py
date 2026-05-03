@@ -244,6 +244,26 @@ def vet_get_appointments():
         )
         appointments = cursor.fetchall()
 
+        cursor.execute(
+            """
+            SELECT
+                r.referraldate,
+                r.diagnosis,
+                r.referrer AS referrer_vet_id,
+                COALESCE(ur.name, 'Unknown') AS referrer_name,
+                COALESCE(br.name, 'Unassigned') AS referrer_branch_name
+            FROM refers r
+            LEFT JOIN users ur ON ur.userid = r.referrer
+            LEFT JOIN veterinarian vr ON vr.veterinarianid = r.referrer
+            LEFT JOIN branch br ON br.branchid = vr.branchid
+            WHERE r.referee = %s
+            ORDER BY r.referraldate DESC
+            LIMIT 20
+            """,
+            (vet_id,),
+        )
+        incoming_referrals = cursor.fetchall()
+
         return jsonify(
             {
                 "vet_id": vet_id,
@@ -254,6 +274,7 @@ def vet_get_appointments():
                 "profile": vet_serialize_records([profile])[0],
                 "available_branches": vet_serialize_records(available_branches),
                 "appointments": vet_serialize_records(appointments),
+                "incoming_referrals": vet_serialize_records(incoming_referrals),
             }
         )
     except Exception as exc:

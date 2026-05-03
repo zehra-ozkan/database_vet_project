@@ -120,6 +120,7 @@ def vet_get_timeline():
                     "visit_events": [],
                     "prescription_events": [],
                     "referral_events": [],
+                    "incoming_referral_events": [],
                     "referral_targets": vet_serialize_records(referral_targets),
                     "microchip": None,
                     "timeline_notice": "Timeline is empty for this veterinarian.",
@@ -273,6 +274,24 @@ def vet_get_timeline():
         )
         referral_events = cursor.fetchall()
 
+        cursor.execute(
+            """
+            SELECT
+                r.referraldate,
+                r.diagnosis,
+                COALESCE(ur.name, 'Unknown') AS referrer_name,
+                COALESCE(ue.name, 'Unknown') AS referee_name
+            FROM refers r
+            LEFT JOIN users ur ON ur.userid = r.referrer
+            LEFT JOIN users ue ON ue.userid = r.referee
+            WHERE r.referee = %s
+            ORDER BY r.referraldate DESC
+            LIMIT 20
+            """,
+            (vet_id,),
+        )
+        incoming_referral_events = cursor.fetchall()
+
         return jsonify(
             {
                 "vet_id": vet_id,
@@ -285,6 +304,7 @@ def vet_get_timeline():
                 "visit_events": vet_serialize_records(visit_events),
                 "prescription_events": vet_serialize_records(prescription_events),
                 "referral_events": vet_serialize_records(referral_events),
+                "incoming_referral_events": vet_serialize_records(incoming_referral_events),
                 "referral_targets": vet_serialize_records(referral_targets),
                 "microchip": vet_serialize_records([microchip])[0] if microchip else None,
                 "timeline_notice": (
