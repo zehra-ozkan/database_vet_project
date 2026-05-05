@@ -10,6 +10,7 @@ type WelcomeData = {
   user: { userid: number; name: string; email: string; phonenumber: string } | null;
   upcomingCount: number;
   outstandingAmount: number;
+  dueSoonVaccinationCount: number;
 };
 
 type ChipRow = {
@@ -219,6 +220,8 @@ export default function PetOwnerDashboardPage() {
     ? foundNewsItems.find((item) => Number(item.chip_id) === Number(firstChip.chipid))
     : null;
   const hasOutstanding = Number(welcome?.outstandingAmount ?? 0) > 0;
+  const dueSoonVaccinationCount = Number(welcome?.dueSoonVaccinationCount ?? 0);
+  const hasDueSoonVaccinations = dueSoonVaccinationCount > 0;
   const todayValue = new Date().toISOString().slice(0, 10);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -320,6 +323,13 @@ export default function PetOwnerDashboardPage() {
                     {hasOutstanding ? "Pay to book" : "No pending bills"}
                   </p>
                 </div>
+                <div className="kpi">
+                  <div className="label">Vaccines due soon</div>
+                  <div className="value">{dueSoonVaccinationCount}</div>
+                  <p className="muted" style={{ fontSize: "13px", margin: "6px 0 0" }}>
+                    {hasDueSoonVaccinations ? "Review vaccination tracker" : "No due vaccine in 14 days"}
+                  </p>
+                </div>
               </div>
 
               <div className="form-group mt-2">
@@ -331,16 +341,25 @@ export default function PetOwnerDashboardPage() {
               <div className="tile mt-2">
                 <div style={{ fontWeight: 700, fontSize: "13px" }}>Quick Reminders</div>
                 <p className="muted" style={{ margin: "6px 0 10px", fontSize: "13px" }}>
-                  {hasOutstanding && visits.length > 0
-                    ? "Unpaid bill detected and upcoming appointment scheduled."
-                    : hasOutstanding
-                      ? "Unpaid bill detected."
-                      : visits.length > 0
-                        ? "Upcoming appointment scheduled."
-                        : "No pending reminders."}
+                  {hasOutstanding && hasDueSoonVaccinations && visits.length > 0
+                    ? "Unpaid bill, upcoming appointment, and due vaccination reminder found."
+                    : hasOutstanding && hasDueSoonVaccinations
+                      ? "Unpaid bill and due vaccination reminder found."
+                      : hasOutstanding && visits.length > 0
+                        ? "Unpaid bill detected and upcoming appointment scheduled."
+                        : hasDueSoonVaccinations && visits.length > 0
+                          ? "Due vaccination reminder and upcoming appointment found."
+                          : hasOutstanding
+                            ? "Unpaid bill detected."
+                            : hasDueSoonVaccinations
+                              ? "Due vaccination reminder found."
+                              : visits.length > 0
+                                ? "Upcoming appointment scheduled."
+                                : "No pending reminders."}
                 </p>
                 {hasOutstanding ? <span className="pill info">Billing</span> : null}
                 {visits.length > 0 ? <span className="pill wait">Upcoming</span> : null}
+                {hasDueSoonVaccinations ? <span className="pill wait">Vaccination due</span> : null}
               </div>
             </div>
           </section>

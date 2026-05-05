@@ -21,6 +21,7 @@ type VetDashboardMetrics = {
 
 type VetScheduleItem = {
   appointmentid: number;
+  petid: number | null;
   datetime: string;
   pet_name: string;
   owner_name: string;
@@ -327,7 +328,12 @@ export default function HomePage() {
                               </span>
                             </td>
                             <td>
-                              <Link href="/vet/appointments">
+                              <Link
+                                href={{
+                                  pathname: `/vet/appointments/${appointment.appointmentid}`,
+                                  query: appointment.petid ? { petId: appointment.petid } : {},
+                                }}
+                              >
                                 {appointment.status === "Completed" ? "View" : "Open"}
                               </Link>
                             </td>

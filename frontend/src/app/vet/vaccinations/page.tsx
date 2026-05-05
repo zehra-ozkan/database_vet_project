@@ -9,6 +9,7 @@ import {
   type VetSearchValue,
 } from "../vet_http";
 import LogoutMenuLink from "../logout_menu_link";
+import MicrochipQuickActions from "../dashboard/microchip_quick_actions";
 
 type VetVaccinationProfile = {
   veterinarian_name: string;
@@ -267,18 +268,9 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
 
             <section className={styles.card}>
               <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                Open appointments
-              </Link>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create visit record
-              </Link>
-              <Link
-                href="/vet/timeline?openReferral=1#create-referral"
-                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
-              >
-                Create referral
-              </Link>
+              <div className={styles.quickActionsList}>
+                <MicrochipQuickActions vetId={selectedVetId} initialNewsCount={0} />
+              </div>
             </section>
 
             <section className={styles.card}>

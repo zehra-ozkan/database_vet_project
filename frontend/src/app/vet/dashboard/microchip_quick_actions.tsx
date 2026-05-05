@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import styles from "./vet_dashboard_page.module.css";
@@ -8,6 +7,8 @@ import styles from "./vet_dashboard_page.module.css";
 type MicrochipQuickActionsProps = {
   vetId: number | null;
   initialNewsCount: number;
+  initialReferralTargets?: ReferralTarget[];
+  autoOpenReferral?: boolean;
 };
 
 type MicrochipLookupResponse = {
@@ -61,6 +62,17 @@ type MicrochipNewsItem = {
 type MicrochipNewsResponse = {
   unread_count: number;
   news: MicrochipNewsItem[];
+};
+
+type ReferralTarget = {
+  veterinarianid: number;
+  veterinarian_name: string;
+  branch_name: string;
+};
+
+type TimelineReferralTargetResponse = {
+  referral_targets?: ReferralTarget[];
+  error?: unknown;
 };
 
 const vetDashboardApiBaseCandidates = Array.from(
@@ -167,6 +179,65 @@ async function markMicrochipNewsRead(vetId: number): Promise<void> {
   }
 }
 
+async function fetchReferralTargets(
+  vetId: number
+): Promise<{ data: ReferralTarget[] | null; error: string | null }> {
+  let lastError = "Referral targets could not be loaded.";
+  for (const apiBase of vetDashboardApiBaseCandidates) {
+    try {
+      const response = await fetch(`${apiBase}/vet/timeline?vetId=${vetId}`);
+      const payload = (await response.json()) as TimelineReferralTargetResponse;
+      if (!response.ok) {
+        lastError = buildErrorMessage(payload, response.status);
+        continue;
+      }
+      const targets = Array.isArray(payload.referral_targets)
+        ? payload.referral_targets
+        : [];
+      return { data: targets, error: null };
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error.message;
+      }
+    }
+  }
+  return { data: null, error: lastError };
+}
+
+async function postReferralAction(
+  vetId: number,
+  refereeVetId: number,
+  diagnosis: string
+): Promise<{ error: string | null }> {
+  let lastError = "Request failed.";
+  for (const apiBase of vetDashboardApiBaseCandidates) {
+    try {
+      const response = await fetch(`${apiBase}/vet/referrals`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vetId,
+          refereeVetId,
+          diagnosis,
+        }),
+      });
+      const responsePayload = (await response.json()) as { error?: unknown };
+      if (!response.ok) {
+        lastError = buildErrorMessage(responsePayload, response.status);
+        continue;
+      }
+      return { error: null };
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error.message;
+      }
+    }
+  }
+  return { error: lastError };
+}
+
 function formatDateTimeLabel(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -187,6 +258,8 @@ function formatDateTimeLabel(value: string | null | undefined): string {
 export default function MicrochipQuickActions({
   vetId,
   initialNewsCount,
+  initialReferralTargets = [],
+  autoOpenReferral = false,
 }: MicrochipQuickActionsProps) {
   const [newsCount, setNewsCount] = useState(Math.max(0, initialNewsCount || 0));
   const [chipModalOpen, setChipModalOpen] = useState(false);
@@ -201,6 +274,17 @@ export default function MicrochipQuickActions({
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsItems, setNewsItems] = useState<MicrochipNewsItem[]>([]);
+  const [referralModalOpen, setReferralModalOpen] = useState(autoOpenReferral);
+  const [referralTargets, setReferralTargets] = useState<ReferralTarget[]>(initialReferralTargets);
+  const [referralTargetsLoading, setReferralTargetsLoading] = useState(false);
+  const [referralTargetError, setReferralTargetError] = useState<string | null>(null);
+  const [refereeVetId, setRefereeVetId] = useState<number | null>(
+    initialReferralTargets.length > 0 ? initialReferralTargets[0].veterinarianid : null
+  );
+  const [referralDiagnosis, setReferralDiagnosis] = useState("");
+  const [referralSaving, setReferralSaving] = useState(false);
+  const [referralMessage, setReferralMessage] = useState<string | null>(null);
+  const [referralError, setReferralError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!vetId || vetId <= 0) {
@@ -247,8 +331,52 @@ export default function MicrochipQuickActions({
     };
   }, [vetId, initialNewsCount]);
 
+  useEffect(() => {
+    setReferralTargets(initialReferralTargets);
+    if (initialReferralTargets.length > 0) {
+      setRefereeVetId((previous) => {
+        if (
+          previous &&
+          initialReferralTargets.some((target) => target.veterinarianid === previous)
+        ) {
+          return previous;
+        }
+        return initialReferralTargets[0].veterinarianid;
+      });
+    }
+  }, [initialReferralTargets]);
+
+  useEffect(() => {
+    if (!autoOpenReferral) {
+      return;
+    }
+    setReferralModalOpen(true);
+  }, [autoOpenReferral]);
+
   const canUseActions = Boolean(vetId && vetId > 0);
   const hasNews = newsCount > 0;
+
+  const loadReferralTargets = async () => {
+    if (!canUseActions) {
+      setReferralTargetError("Veterinarian context is not ready yet.");
+      return;
+    }
+    if (referralTargets.length > 0) {
+      return;
+    }
+    setReferralTargetsLoading(true);
+    setReferralTargetError(null);
+    const { data, error } = await fetchReferralTargets(vetId!);
+    setReferralTargetsLoading(false);
+    if (!data) {
+      setReferralTargetError(error ?? "Referral targets could not be loaded.");
+      return;
+    }
+    setReferralTargets(data);
+    if (data.length > 0) {
+      setRefereeVetId(data[0].veterinarianid);
+    }
+  };
 
   const handleLookupSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -322,6 +450,50 @@ export default function MicrochipQuickActions({
     );
   };
 
+  const openReferralModal = async () => {
+    setReferralModalOpen(true);
+    setReferralError(null);
+    setReferralMessage(null);
+    await loadReferralTargets();
+  };
+
+  const closeReferralModal = () => {
+    if (referralSaving) {
+      return;
+    }
+    setReferralModalOpen(false);
+  };
+
+  const submitReferral = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canUseActions) {
+      setReferralError("Veterinarian context is not ready yet.");
+      return;
+    }
+    if (!refereeVetId) {
+      setReferralError("Select a referee veterinarian.");
+      return;
+    }
+    const normalizedDiagnosis = referralDiagnosis.trim();
+    if (!normalizedDiagnosis) {
+      setReferralError("Referral diagnosis is required.");
+      return;
+    }
+
+    setReferralError(null);
+    setReferralMessage(null);
+    setReferralSaving(true);
+    const { error } = await postReferralAction(vetId!, refereeVetId, normalizedDiagnosis);
+    setReferralSaving(false);
+    if (error) {
+      setReferralError(error);
+      return;
+    }
+    setReferralMessage("Referral created successfully.");
+    setReferralDiagnosis("");
+    setReferralModalOpen(false);
+  };
+
   return (
     <>
       <button
@@ -343,12 +515,13 @@ export default function MicrochipQuickActions({
           {newsCount}
         </span>
       </button>
-      <Link
-        href="/vet/timeline?openReferral=1#create-referral"
+      <button
+        type="button"
         className={`${styles.btn} ${styles.ghost} ${styles.block}`}
+        onClick={openReferralModal}
       >
         Create referral
-      </Link>
+      </button>
 
       {chipModalOpen ? (
         <div className={styles.modalBackdrop} onClick={() => (!chipLookupLoading && !foundNewsSending ? setChipModalOpen(false) : null)}>
@@ -477,6 +650,67 @@ export default function MicrochipQuickActions({
                 </div>
               )
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {referralModalOpen ? (
+        <div className={styles.modalBackdrop} onClick={closeReferralModal}>
+          <div className={styles.modalCard} onClick={(event) => event.stopPropagation()}>
+            <h3 className={styles.pageTitle}>Create referral</h3>
+            <p className={styles.pageSubtitle}>Create referral without leaving this page.</p>
+            <form onSubmit={submitReferral} className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Referee veterinarian</label>
+                <select
+                  className={styles.inputControl}
+                  value={refereeVetId ?? ""}
+                  onChange={(event) => {
+                    const parsedValue = Number.parseInt(event.target.value, 10);
+                    setRefereeVetId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
+                  }}
+                  disabled={referralTargetsLoading || referralSaving || referralTargets.length === 0}
+                >
+                  {referralTargets.length === 0 ? (
+                    <option value="">
+                      {referralTargetsLoading ? "Loading targets..." : "No referral target available"}
+                    </option>
+                  ) : (
+                    referralTargets.map((target) => (
+                      <option key={target.veterinarianid} value={target.veterinarianid}>
+                        {target.veterinarian_name} · {target.branch_name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div className={styles.formGroup} style={{ minWidth: "100%" }}>
+                <label className={styles.formLabel}>Referral diagnosis</label>
+                <textarea
+                  className={styles.inputControl}
+                  rows={3}
+                  value={referralDiagnosis}
+                  onChange={(event) => setReferralDiagnosis(event.target.value)}
+                  placeholder="Diagnosis summary for referral"
+                  disabled={referralSaving}
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={closeReferralModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.btn}
+                  disabled={referralSaving || referralTargetsLoading || !refereeVetId}
+                >
+                  {referralSaving ? "Saving..." : "Submit referral"}
+                </button>
+              </div>
+            </form>
+            {referralTargetError ? <p className={styles.errorText}>{referralTargetError}</p> : null}
+            {referralError ? <p className={styles.errorText}>{referralError}</p> : null}
+            {referralMessage ? <p className={styles.tileSub}>{referralMessage}</p> : null}
           </div>
         </div>
       ) : null}

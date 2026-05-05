@@ -907,10 +907,23 @@ def dashboard_welcome():
         (owner_id,),
     )
 
+    due_soon_vaccinations = fetch_one(
+        """
+        SELECT COUNT(*) AS dueSoonVaccinationCount
+        FROM VaccinationRecord vr
+        JOIN Pet p ON p.petID = vr.petID
+        WHERE p.ownerID = %s
+          AND vr.nextDueDate IS NOT NULL
+          AND vr.nextDueDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days';
+        """,
+        (owner_id,),
+    )
+
     return jsonify({
         "user": user_info,
         "upcomingCount": int(upcoming["upcomingappointmentcount"]) if upcoming else 0,
         "outstandingAmount": float(outstanding["outstandingamount"]) if outstanding and outstanding["outstandingamount"] is not None else 0,
+        "dueSoonVaccinationCount": int(due_soon_vaccinations["duesoonvaccinationcount"]) if due_soon_vaccinations else 0,
     })
 
 

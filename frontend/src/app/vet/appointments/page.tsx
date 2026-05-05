@@ -5,6 +5,7 @@ import styles from "../dashboard/vet_dashboard_page.module.css";
 import LogoutMenuLink from "../logout_menu_link";
 import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveInt, type VetSearchValue } from "../vet_http";
 import IncomingReferralActions from "./incoming_referral_actions";
+import MicrochipQuickActions from "../dashboard/microchip_quick_actions";
 
 type VetAppointmentsProfile = {
   veterinarian_name: string;
@@ -18,6 +19,7 @@ type VetBranchOption = {
 
 type VetAppointmentItem = {
   appointmentid: number;
+  petid: number | null;
   datetime: string;
   pet_name: string;
   owner_name: string;
@@ -49,6 +51,22 @@ type VetAppointmentsResponse = {
   available_branches: VetBranchOption[];
   appointments: VetAppointmentItem[];
   incoming_referrals: VetIncomingReferralItem[];
+};
+
+type VetDashboardSnapshotScheduleItem = {
+  appointmentid: number;
+  datetime: string;
+  pet_name: string;
+  owner_name: string;
+  status: "Completed" | "Upcoming" | "Pending";
+};
+
+type VetDashboardSnapshotResponse = {
+  metrics: {
+    todays_appointments: number;
+    pending_documentation: number;
+  };
+  today_schedule: VetDashboardSnapshotScheduleItem[];
 };
 
 type VetAppointmentsPageProps = {
@@ -135,6 +153,12 @@ async function fetchVetAppointments(
   return vetFetchJson<VetAppointmentsResponse>(`/api/vet/appointments?${queryParts.join("&")}`);
 }
 
+async function fetchVetDashboardSnapshot(
+  vetId: number
+): Promise<{ data: VetDashboardSnapshotResponse | null; error: string | null }> {
+  return vetFetchJson<VetDashboardSnapshotResponse>(`/api/vet/dashboard?vetId=${vetId}`);
+}
+
 export default async function VetAppointmentsPage({ searchParams }: VetAppointmentsPageProps) {
   const selectedVetId = await vetGetLoggedInVetId();
   if (!selectedVetId) {
@@ -153,7 +177,10 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
   const timelineHref = "/vet/timeline";
   const profileHref = "/vet/profile";
 
-  const { data, error } = await fetchVetAppointments(selectedVetId, selectedDate, selectedBranchId);
+  const [{ data, error }, { data: dashboardSnapshot }] = await Promise.all([
+    fetchVetAppointments(selectedVetId, selectedDate, selectedBranchId),
+    fetchVetDashboardSnapshot(selectedVetId),
+  ]);
 
   if (!data) {
     return (
@@ -179,9 +206,13 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
     }
     return isSameCalendarDay(parsedDate, now);
   });
-  const todaysAppointmentsCount = todayAppointments.length;
-  const pendingDocumentationCount = todayAppointments.filter((appointment) => appointment.status === "Pending").length;
-  const schedulePreview = todayAppointments.slice(0, 6);
+  const todaysAppointmentsCount =
+    dashboardSnapshot?.metrics.todays_appointments ?? todayAppointments.length;
+  const pendingDocumentationCount =
+    dashboardSnapshot?.metrics.pending_documentation ??
+    todayAppointments.filter((appointment) => appointment.status === "Pending").length;
+  const schedulePreview =
+    dashboardSnapshot?.today_schedule?.slice(0, 6) ?? todayAppointments.slice(0, 6);
 
   return (
     <main className={styles.page}>
@@ -234,18 +265,9 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
 
             <section className={styles.card}>
               <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-              <Link href="/vet/appointments" className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                Open appointments
-              </Link>
-              <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create visit record
-              </Link>
-              <Link
-                href="/vet/timeline?openReferral=1#create-referral"
-                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
-              >
-                Create referral
-              </Link>
+              <div className={styles.quickActionsList}>
+                <MicrochipQuickActions vetId={selectedVetId} initialNewsCount={0} />
+              </div>
             </section>
 
             <section className={styles.card}>
@@ -358,14 +380,9 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                             <Link
                               href={{
                                 pathname: `/vet/appointments/${appointment.appointmentid}`,
-                                query: {
-                                  petName: appointment.pet_name,
-                                  ownerName: appointment.owner_name,
-                                  datetime: appointment.datetime,
-                                  branchName: appointment.branch_name,
-                                  status: appointment.status,
-                                  type: "Consultation",
-                                },
+                                query: appointment.petid
+                                  ? { petId: appointment.petid }
+                                  : {},
                               }}
                               className={styles.btn}
                             >

@@ -238,7 +238,8 @@ def vet_get_dashboard():
                 a.appointmentid,
                 a.datetime,
                 a.atype,
-                COALESCE(p.name, 'Unknown') AS pet_name,
+                COALESCE(vp_pet.petid, p.petid) AS petid,
+                COALESCE(vp_pet.name, p.name, 'Unknown') AS pet_name,
                 uo.name AS owner_name,
                 CASE
                     WHEN vs.appointmentid IS NOT NULL THEN 'Completed'
@@ -248,8 +249,10 @@ def vet_get_dashboard():
             FROM appointment a
             JOIN petowner po ON po.ownerid = a.petownerid
             JOIN users uo ON uo.userid = po.ownerid
+            LEFT JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
+            LEFT JOIN pet vp_pet ON vp_pet.petid = vp.petid
             LEFT JOIN LATERAL (
-                SELECT p.name
+                SELECT p.petid, p.name
                 FROM pet p
                 WHERE p.ownerid = a.petownerid
                 ORDER BY p.petid ASC

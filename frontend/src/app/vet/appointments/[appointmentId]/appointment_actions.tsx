@@ -10,6 +10,7 @@ type MedicineOption = {
   name: string;
   quantity: number | null;
   status: string | null;
+  category?: string | null;
 };
 
 type ReferralTarget = {
@@ -36,6 +37,11 @@ type AppointmentDraft = {
   selectedMedicineIds: number[];
   refereeVetId: number | null;
   referralDiagnosis: string;
+  vaccinationVaccineId: number | null;
+  vaccinationShotDate: string;
+  vaccinationNextDueDate: string;
+  vaccinationFrequencyDays: string;
+  vaccinationDoseCount: string;
   consultationFee: string;
   treatmentCost: string;
   medicationCost: string;
@@ -47,6 +53,7 @@ type FinalizeResponse = {
   message?: string;
   follow_up_appointment?: unknown | null;
   prescription?: unknown | null;
+  vaccination_record?: unknown | null;
   referral?: unknown | null;
 };
 
@@ -121,6 +128,14 @@ export default function AppointmentActions({
   const [prescriptionMessage, setPrescriptionMessage] = useState<string | null>(null);
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
   const [prescriptionSaving, setPrescriptionSaving] = useState(false);
+  const [vaccinationVaccineId, setVaccinationVaccineId] = useState<number | null>(null);
+  const [vaccinationShotDate, setVaccinationShotDate] = useState("");
+  const [vaccinationNextDueDate, setVaccinationNextDueDate] = useState("");
+  const [vaccinationFrequencyDays, setVaccinationFrequencyDays] = useState("");
+  const [vaccinationDoseCount, setVaccinationDoseCount] = useState("");
+  const [vaccinationMessage, setVaccinationMessage] = useState<string | null>(null);
+  const [vaccinationError, setVaccinationError] = useState<string | null>(null);
+  const [vaccinationSaving, setVaccinationSaving] = useState(false);
 
   const [refereeVetId, setRefereeVetId] = useState<number | null>(null);
   const [referralDiagnosis, setReferralDiagnosis] = useState("");
@@ -144,6 +159,14 @@ export default function AppointmentActions({
     () => medicines.filter((medicine) => (medicine.quantity ?? 0) > 0),
     [medicines]
   );
+  const availableVaccines = useMemo(
+    () =>
+      medicines.filter(
+        (medicine) =>
+          String(medicine.category ?? "").toLowerCase() === "vaccine" && (medicine.quantity ?? 0) > 0
+      ),
+    [medicines]
+  );
   const actionsLocked = isCompletedLocal;
   const draftStorageKey = useMemo(
     () => `vet_appointment_draft:${vetId}:${appointmentId}`,
@@ -159,6 +182,11 @@ export default function AppointmentActions({
       visitNotes,
       treatment,
       selectedMedicineIds,
+      vaccinationVaccineId,
+      vaccinationShotDate,
+      vaccinationNextDueDate,
+      vaccinationFrequencyDays,
+      vaccinationDoseCount,
       refereeVetId,
       referralDiagnosis,
       consultationFee,
@@ -203,6 +231,27 @@ export default function AppointmentActions({
           .map((value) => Number.parseInt(String(value), 10))
           .filter((value) => Number.isInteger(value) && value > 0);
         setSelectedMedicineIds(Array.from(new Set(normalizedIds)));
+      }
+      if (typeof parsedDraft.vaccinationVaccineId === "number" && parsedDraft.vaccinationVaccineId > 0) {
+        setVaccinationVaccineId(parsedDraft.vaccinationVaccineId);
+      }
+      if (typeof parsedDraft.vaccinationShotDate === "string") {
+        setVaccinationShotDate(parsedDraft.vaccinationShotDate);
+      }
+      if (typeof parsedDraft.vaccinationNextDueDate === "string") {
+        setVaccinationNextDueDate(parsedDraft.vaccinationNextDueDate);
+      }
+      if (typeof parsedDraft.vaccinationFrequencyDays === "string") {
+        setVaccinationFrequencyDays(parsedDraft.vaccinationFrequencyDays);
+      } else if (typeof (parsedDraft as { vaccinationFrequency?: string }).vaccinationFrequency === "string") {
+        const legacyFrequency = ((parsedDraft as { vaccinationFrequency?: string }).vaccinationFrequency ?? "").trim();
+        const legacyNumeric = Number.parseInt(legacyFrequency, 10);
+        if (Number.isInteger(legacyNumeric) && legacyNumeric > 0) {
+          setVaccinationFrequencyDays(String(legacyNumeric));
+        }
+      }
+      if (typeof parsedDraft.vaccinationDoseCount === "string") {
+        setVaccinationDoseCount(parsedDraft.vaccinationDoseCount);
       }
       if (typeof parsedDraft.referralDiagnosis === "string") {
         setReferralDiagnosis(parsedDraft.referralDiagnosis);
@@ -326,6 +375,103 @@ export default function AppointmentActions({
     setReferralMessage("Referral draft saved. It will be committed on Complete visit.");
   };
 
+  const parseOptionalPositiveInteger = (
+    value: string,
+    label: string
+  ): { value: number | null; error: string | null } => {
+    const normalized = value.trim();
+    if (!normalized) {
+      return { value: null, error: null };
+    }
+    const parsed = Number.parseInt(normalized, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return { value: null, error: `${label} must be a positive integer.` };
+    }
+    return { value: parsed, error: null };
+  };
+
+  const deriveNextDueDate = (shotDateValue: string, frequencyDays: number): string | null => {
+    if (!Number.isInteger(frequencyDays) || frequencyDays <= 0) {
+      return null;
+    }
+
+    const baseDate = shotDateValue
+      ? new Date(`${shotDateValue}T00:00:00`)
+      : new Date();
+    if (Number.isNaN(baseDate.getTime())) {
+      return null;
+    }
+    baseDate.setDate(baseDate.getDate() + frequencyDays);
+
+    const year = baseDate.getFullYear();
+    const month = String(baseDate.getMonth() + 1).padStart(2, "0");
+    const day = String(baseDate.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const submitVaccination = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedPetId) {
+      setVaccinationError("Select a pet before adding vaccination data.");
+      return;
+    }
+    if (!vaccinationVaccineId) {
+      setVaccinationError("Select a vaccine.");
+      return;
+    }
+
+    const frequencyDaysResult = parseOptionalPositiveInteger(
+      vaccinationFrequencyDays,
+      "Frequency days"
+    );
+    if (frequencyDaysResult.error) {
+      setVaccinationError(frequencyDaysResult.error);
+      return;
+    }
+
+    const doseCountResult = parseOptionalPositiveInteger(
+      vaccinationDoseCount,
+      "Total doses"
+    );
+    if (doseCountResult.error) {
+      setVaccinationError(doseCountResult.error);
+      return;
+    }
+
+    let normalizedNextDueDate = vaccinationNextDueDate.trim();
+    if (!normalizedNextDueDate && frequencyDaysResult.value) {
+      normalizedNextDueDate =
+        deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
+    }
+    if (
+      !normalizedNextDueDate &&
+      frequencyDaysResult.value === null &&
+      doseCountResult.value === null
+    ) {
+      setVaccinationError(
+        "Provide next due date, frequency days, or total doses."
+      );
+      return;
+    }
+
+    setVaccinationError(null);
+    setVaccinationMessage(null);
+    setVaccinationSaving(true);
+    if (normalizedNextDueDate && normalizedNextDueDate !== vaccinationNextDueDate) {
+      setVaccinationNextDueDate(normalizedNextDueDate);
+    }
+    persistDraft({
+      selectedPetId,
+      vaccinationVaccineId,
+      vaccinationShotDate,
+      vaccinationNextDueDate: normalizedNextDueDate,
+      vaccinationFrequencyDays,
+      vaccinationDoseCount,
+    });
+    setVaccinationSaving(false);
+    setVaccinationMessage("Vaccination draft saved. It will be committed on Complete visit.");
+  };
+
   const submitCompletion = async (event: FormEvent) => {
     event.preventDefault();
     if (actionsLocked) {
@@ -365,6 +511,44 @@ export default function AppointmentActions({
       setCompletionError("Select a referee veterinarian for referral.");
       return;
     }
+    if (vaccinationVaccineId && !selectedPetId) {
+      setCompletionError("Select a pet before completing with vaccination.");
+      return;
+    }
+    const frequencyDaysResult = parseOptionalPositiveInteger(
+      vaccinationFrequencyDays,
+      "Frequency days"
+    );
+    if (frequencyDaysResult.error) {
+      setCompletionError(frequencyDaysResult.error);
+      return;
+    }
+
+    const doseCountResult = parseOptionalPositiveInteger(
+      vaccinationDoseCount,
+      "Total doses"
+    );
+    if (doseCountResult.error) {
+      setCompletionError(doseCountResult.error);
+      return;
+    }
+
+    let normalizedVaccinationNextDueDate = vaccinationNextDueDate.trim();
+    if (!normalizedVaccinationNextDueDate && frequencyDaysResult.value) {
+      normalizedVaccinationNextDueDate =
+        deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
+    }
+    if (
+      vaccinationVaccineId &&
+      !normalizedVaccinationNextDueDate &&
+      frequencyDaysResult.value === null &&
+      doseCountResult.value === null
+    ) {
+      setCompletionError(
+        "Vaccination requires next due date, frequency days, or total doses."
+      );
+      return;
+    }
 
     setCompletionError(null);
     setCompletionMessage(null);
@@ -384,6 +568,11 @@ export default function AppointmentActions({
       visitNotes: normalizedNotes,
       treatment: normalizedTreatment,
       selectedMedicineIds,
+      vaccinationVaccineId,
+      vaccinationShotDate,
+      vaccinationNextDueDate: normalizedVaccinationNextDueDate,
+      vaccinationFrequencyDays,
+      vaccinationDoseCount,
       refereeVetId,
       referralDiagnosis: normalizedReferralDiagnosis,
       consultationFee,
@@ -400,6 +589,11 @@ export default function AppointmentActions({
       petId: selectedPetId,
       treatment: normalizedTreatment || null,
       medicineIds: selectedMedicineIds,
+      vaccinationVaccineId: vaccinationVaccineId ?? null,
+      vaccinationShotDate: vaccinationShotDate || null,
+      vaccinationNextDueDate: normalizedVaccinationNextDueDate || null,
+      vaccinationFrequencyDays: frequencyDaysResult.value,
+      vaccinationDoseCount: doseCountResult.value,
       refereeVetId: normalizedReferralDiagnosis ? refereeVetId ?? null : null,
       referralDiagnosis: normalizedReferralDiagnosis || null,
       consultationFee: consultationFeeResult.value,
@@ -417,6 +611,9 @@ export default function AppointmentActions({
     const completionDetails: string[] = [];
     if (data?.prescription) {
       completionDetails.push("prescription");
+    }
+    if (data?.vaccination_record) {
+      completionDetails.push("vaccination");
     }
     if (data?.referral) {
       completionDetails.push("referral");
@@ -612,6 +809,85 @@ export default function AppointmentActions({
         </form>
         {referralMessage ? <p className={styles.tileSub}>{referralMessage}</p> : null}
         {referralError ? <p className={styles.errorText}>{referralError}</p> : null}
+      </section>
+
+      <section className={styles.card}>
+        <h2 className={styles.pageTitle}>Vaccination</h2>
+        <form onSubmit={submitVaccination} className={`${styles.formRow} ${styles.mt1}`}>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Vaccine</label>
+            <select
+              className={styles.inputControl}
+              value={vaccinationVaccineId ?? ""}
+              onChange={(event) => {
+                const rawValue = event.target.value;
+                if (!rawValue) {
+                  setVaccinationVaccineId(null);
+                  return;
+                }
+                const parsedValue = Number.parseInt(rawValue, 10);
+                setVaccinationVaccineId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
+              }}
+              disabled={vaccinationSaving}
+            >
+              <option value="">No vaccine selected</option>
+              {availableVaccines.map((vaccine) => (
+                <option key={vaccine.medicineid} value={vaccine.medicineid}>
+                  {vaccine.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Shot date (optional)</label>
+            <input
+              type="date"
+              className={styles.inputControl}
+              value={vaccinationShotDate}
+              onChange={(event) => setVaccinationShotDate(event.target.value)}
+              disabled={vaccinationSaving}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Next due date</label>
+            <input
+              type="date"
+              className={styles.inputControl}
+              value={vaccinationNextDueDate}
+              onChange={(event) => setVaccinationNextDueDate(event.target.value)}
+              disabled={vaccinationSaving}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Frequency (days)</label>
+            <input
+              type="number"
+              min={1}
+              className={styles.inputControl}
+              value={vaccinationFrequencyDays}
+              onChange={(event) => setVaccinationFrequencyDays(event.target.value)}
+              placeholder="e.g. 30"
+              disabled={vaccinationSaving}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Total doses (optional)</label>
+            <input
+              type="number"
+              min={1}
+              className={styles.inputControl}
+              value={vaccinationDoseCount}
+              onChange={(event) => setVaccinationDoseCount(event.target.value)}
+              placeholder="e.g. 3"
+              disabled={vaccinationSaving}
+            />
+          </div>
+          <button type="submit" className={styles.btn} disabled={vaccinationSaving || availableVaccines.length === 0}>
+            {vaccinationSaving ? "Saving..." : "Save vaccination draft"}
+          </button>
+        </form>
+        {vaccinationMessage ? <p className={styles.tileSub}>{vaccinationMessage}</p> : null}
+        {vaccinationError ? <p className={styles.errorText}>{vaccinationError}</p> : null}
       </section>
 
       <section className={styles.card}>
