@@ -8,6 +8,7 @@ import styles from "../dashboard/vet_dashboard_page.module.css";
 type ChipStatusReporterProps = {
   vetId: number;
   petId: number;
+  canMarkFound: boolean;
 };
 
 const clientApiBaseCandidates = Array.from(
@@ -59,20 +60,20 @@ async function postChipStatusReport(
   return { error: lastError };
 }
 
-export default function ChipStatusReporter({ vetId, petId }: ChipStatusReporterProps) {
+export default function ChipStatusReporter({ vetId, petId, canMarkFound }: ChipStatusReporterProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const submitStatus = async (isFound: boolean) => {
+  const submitStatus = async () => {
     setSaving(true);
     setMessage(null);
     setError(null);
 
     const { error: submitError } = await postChipStatusReport(petId, {
       vetId,
-      isFound,
+      isFound: true,
     });
     setSaving(false);
 
@@ -81,24 +82,20 @@ export default function ChipStatusReporter({ vetId, petId }: ChipStatusReporterP
       return;
     }
 
-    setMessage(isFound ? "Marked as found." : "Reported as lost.");
+    setMessage("Marked as found.");
     router.refresh();
   };
+
+  if (!canMarkFound) {
+    return null;
+  }
 
   return (
     <div className={`${styles.formRow} ${styles.mt1}`}>
       <button
         type="button"
-        className={`${styles.btn} ${styles.ghost}`}
-        onClick={() => submitStatus(false)}
-        disabled={saving}
-      >
-        {saving ? "Saving..." : "Report lost"}
-      </button>
-      <button
-        type="button"
         className={styles.btn}
-        onClick={() => submitStatus(true)}
+        onClick={submitStatus}
         disabled={saving}
       >
         {saving ? "Saving..." : "Mark found"}

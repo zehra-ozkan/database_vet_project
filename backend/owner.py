@@ -83,6 +83,39 @@ def owner_route(path: str, **options):
     return decorator
 
 
+def _owner_get_microchip_found_news(owner_id: int):
+    rows = fetch_all(
+        """
+        SELECT
+            lfr.reportid AS news_id,
+            COALESCE(lfr.foundat, lfr.createddate::timestamp) AS created_at,
+            c.chipid AS chip_id,
+            p.petid AS pet_id,
+            p.name AS pet_name,
+            p.ownerid AS owner_id,
+            uo.name AS owner_name,
+            lfr.foundbyvetid AS source_vet_id,
+            COALESCE(uv.name, 'Unknown') AS source_vet_name,
+            COALESCE(b.name, 'Unassigned') AS source_branch_name,
+            COALESCE(lfr.foundnote, '') AS notes,
+            (lfr.ownerreadat IS NULL) AS is_unread_owner
+        FROM lostfoundreport lfr
+        JOIN pet p ON p.petid = lfr.petid
+        LEFT JOIN chip c ON c.petid = p.petid
+        JOIN users uo ON uo.userid = p.ownerid
+        LEFT JOIN users uv ON uv.userid = lfr.foundbyvetid
+        LEFT JOIN veterinarian vv ON vv.veterinarianid = lfr.foundbyvetid
+        LEFT JOIN branch b ON b.branchid = vv.branchid
+        WHERE p.ownerid = %s
+          AND COALESCE(lfr.isfound, FALSE) = TRUE
+          AND lfr.foundbyvetid IS NOT NULL
+        ORDER BY COALESCE(lfr.foundat, lfr.createddate::timestamp) DESC, lfr.reportid DESC
+        """,
+        (owner_id,),
+    )
+    return rows
+
+
 # Load all pets of the current owner
 @owner_route("/pets", methods=["GET"])
 def owner_pets():
@@ -899,7 +932,77 @@ def dashboard_chip_status():
         """,
         (owner_id,),
     )
+    owner_news = _owner_get_microchip_found_news(owner_id)
+    latest_news_by_chip = {}
+    for news_item in owner_news:
+        chip_id = int(news_item.get("chip_id") or 0)
+        if chip_id <= 0:
+            continue
+        if chip_id in latest_news_by_chip:
+            continue
+        latest_news_by_chip[chip_id] = news_item
+
+    for row in rows:
+        chip_id = int(row.get("chipid") or 0)
+        latest_news = latest_news_by_chip.get(chip_id)
+        row["has_found_vet_info"] = bool(latest_news)
+        row["found_vet_name"] = latest_news.get("source_vet_name") if latest_news else None
+        row["found_vet_branch_name"] = latest_news.get("source_branch_name") if latest_news else None
+        row["found_at"] = latest_news.get("created_at") if latest_news else None
+        row["found_notes"] = latest_news.get("notes") if latest_news else None
+        row["has_unread_found_news"] = bool(latest_news and latest_news.get("is_unread_owner"))
+
     return jsonify(rows)
+
+
+@owner_route("/dashboard/microchip-found-news", methods=["GET"])
+def dashboard_microchip_found_news():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    news_items = _owner_get_microchip_found_news(owner_id)
+    unread_count = sum(1 for item in news_items if bool(item.get("is_unread_owner")))
+
+    return jsonify(
+        {
+            "unread_count": unread_count,
+            "items": news_items,
+        }
+    )
+
+
+@owner_route("/dashboard/microchip-found-news/mark-read", methods=["POST"])
+def dashboard_microchip_found_news_mark_read():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            UPDATE lostfoundreport lfr
+            SET ownerreadat = NOW()
+            FROM pet p
+            WHERE p.petid = lfr.petid
+              AND p.ownerid = %s
+              AND COALESCE(lfr.isfound, FALSE) = TRUE
+              AND lfr.foundbyvetid IS NOT NULL
+              AND lfr.ownerreadat IS NULL
+            """,
+            (owner_id,),
+        )
+        marked_count = int(cur.rowcount)
+        conn.commit()
+        return jsonify({"marked_read_count": marked_count})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 
 # Upcoming visits list

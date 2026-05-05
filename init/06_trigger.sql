@@ -54,7 +54,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_update_chip_status_after_report
-AFTER INSERT ON LostFoundReport
+AFTER INSERT OR UPDATE OF isFound ON LostFoundReport
 FOR EACH ROW
 EXECUTE FUNCTION update_chip_status_after_report();
 

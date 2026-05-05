@@ -345,10 +345,11 @@ def vet_get_appointments():
             ) inferred ON TRUE
             LEFT JOIN users uo ON uo.userid = inferred.petownerid
             WHERE r.referee = %s
+              AND COALESCE(r.diagnosis, '') NOT LIKE %s
             ORDER BY r.referraldate DESC
             LIMIT 20
             """,
-            (vet_id,),
+            (vet_id, "[[MICROCHIP_NEWS|%"),
         )
         incoming_referrals = cursor.fetchall()
         normalized_incoming_referrals = []

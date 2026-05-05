@@ -300,6 +300,9 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
     status: data.microchip?.status ?? null,
     lastKnownLocation: data.microchip?.last_known_location ?? null,
   };
+  const canMarkFound =
+    Boolean(hasMicrochipRecord) &&
+    microchipSnapshot.status === "Reported Lost";
 
   return (
     <main className={styles.page}>
@@ -478,7 +481,11 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                     <p className={styles.tileSub}>No microchip record is registered for this pet.</p>
                   )}
                   {data.selected_pet_id ? (
-                    <ChipStatusReporter vetId={selectedVetId} petId={data.selected_pet_id} />
+                    <ChipStatusReporter
+                      vetId={selectedVetId}
+                      petId={data.selected_pet_id}
+                      canMarkFound={canMarkFound}
+                    />
                   ) : null}
                 </div>
               </section>

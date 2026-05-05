@@ -48,6 +48,82 @@ def _vet_clean_referral_diagnosis(diagnosis):
     return diagnosis_without_marker if diagnosis_without_marker else None
 
 
+def _vet_resolve_pet_registered_vet(cursor, pet_id, fallback_vet_id=None):
+    """Resolve registered veterinarian for pet based on pet-level history."""
+    cursor.execute(
+        """
+        SELECT
+            rv.veterinarianid,
+            COALESCE(u.name, 'Unknown') AS veterinarian_name,
+            v.branchid,
+            COALESCE(b.name, 'Unknown') AS branch_name
+        FROM (
+            SELECT a.veterinarianid
+            FROM appointment a
+            JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
+            WHERE vp.petid = %s
+            ORDER BY a.datetime DESC
+            LIMIT 1
+        ) rv
+        LEFT JOIN users u ON u.userid = rv.veterinarianid
+        LEFT JOIN veterinarian v ON v.veterinarianid = rv.veterinarianid
+        LEFT JOIN branch b ON b.branchid = v.branchid
+        """,
+        (pet_id,),
+    )
+    resolved = cursor.fetchone()
+    if resolved and resolved.get("veterinarianid"):
+        return resolved
+
+    cursor.execute(
+        """
+        SELECT
+            vp.veterinarianid,
+            COALESCE(u.name, 'Unknown') AS veterinarian_name,
+            v.branchid,
+            COALESCE(b.name, 'Unknown') AS branch_name
+        FROM vaccinationplan vp
+        LEFT JOIN users u ON u.userid = vp.veterinarianid
+        LEFT JOIN veterinarian v ON v.veterinarianid = vp.veterinarianid
+        LEFT JOIN branch b ON b.branchid = v.branchid
+        WHERE vp.petid = %s
+        ORDER BY vp.nextvaccinationdate DESC NULLS LAST, vp.planid DESC
+        LIMIT 1
+        """,
+        (pet_id,),
+    )
+    resolved = cursor.fetchone()
+    if resolved and resolved.get("veterinarianid"):
+        return resolved
+
+    if fallback_vet_id and int(fallback_vet_id) > 0:
+        cursor.execute(
+            """
+            SELECT
+                v.veterinarianid,
+                COALESCE(u.name, 'Unknown') AS veterinarian_name,
+                v.branchid,
+                COALESCE(b.name, 'Unknown') AS branch_name
+            FROM veterinarian v
+            LEFT JOIN users u ON u.userid = v.veterinarianid
+            LEFT JOIN branch b ON b.branchid = v.branchid
+            WHERE v.veterinarianid = %s
+            LIMIT 1
+            """,
+            (int(fallback_vet_id),),
+        )
+        resolved = cursor.fetchone()
+        if resolved and resolved.get("veterinarianid"):
+            return resolved
+
+    return {
+        "veterinarianid": None,
+        "veterinarian_name": "Unknown",
+        "branchid": None,
+        "branch_name": "Unknown",
+    }
+
+
 @vet_timeline_bp.route("/api/vet/timeline", methods=["GET"])
 def vet_get_timeline():
     """Return timeline-oriented data for veterinarian and selected pet."""
@@ -284,10 +360,11 @@ def vet_get_timeline():
             LEFT JOIN users ur ON ur.userid = r.referrer
             LEFT JOIN users ue ON ue.userid = r.referee
             WHERE r.referrer = %s
+              AND COALESCE(r.diagnosis, '') NOT LIKE %s
             ORDER BY r.referraldate DESC
             LIMIT 20
             """,
-            (vet_id,),
+            (vet_id, "[[MICROCHIP_NEWS|%"),
         )
         referral_events = cursor.fetchall()
         for referral_event in referral_events:
@@ -306,10 +383,11 @@ def vet_get_timeline():
             LEFT JOIN users ur ON ur.userid = r.referrer
             LEFT JOIN users ue ON ue.userid = r.referee
             WHERE r.referee = %s
+              AND COALESCE(r.diagnosis, '') NOT LIKE %s
             ORDER BY r.referraldate DESC
             LIMIT 20
             """,
-            (vet_id,),
+            (vet_id, "[[MICROCHIP_NEWS|%"),
         )
         incoming_referral_events = cursor.fetchall()
         for referral_event in incoming_referral_events:
@@ -371,39 +449,117 @@ def vet_create_lost_found_report(pet_id):
 
         cursor.execute(
             """
-            SELECT v.veterinarianid
+            SELECT
+                v.veterinarianid,
+                COALESCE(u.name, 'Unknown') AS veterinarian_name,
+                COALESCE(b.name, 'Unknown') AS branch_name
             FROM veterinarian v
+            LEFT JOIN users u ON u.userid = v.veterinarianid
+            LEFT JOIN branch b ON b.branchid = v.branchid
             WHERE v.veterinarianid = %s
             """,
             (vet_id,),
         )
-        if cursor.fetchone() is None:
+        finder_vet = cursor.fetchone()
+        if finder_vet is None:
             return jsonify({"error": "Veterinarian not found."}), 404
 
         cursor.execute(
             """
-            SELECT p.petid
+            SELECT
+                p.petid,
+                p.name AS pet_name,
+                p.ownerid,
+                c.chipid,
+                c.veterinarianid AS chip_vet_id,
+                COALESCE(uo.name, 'Unknown') AS owner_name,
+                uo.phonenumber AS owner_phone,
+                uo.email AS owner_email
             FROM pet p
+            LEFT JOIN chip c ON c.petid = p.petid
+            LEFT JOIN users uo ON uo.userid = p.ownerid
             WHERE p.petid = %s
             """,
             (pet_id,),
         )
-        if cursor.fetchone() is None:
+        pet_context = cursor.fetchone()
+        if pet_context is None:
             return jsonify({"error": "Pet not found."}), 404
 
-        cursor.execute(
-            """
-            INSERT INTO lostfoundreport (isfound, petid, createddate)
-            VALUES (
-                %s,
-                %s,
-                COALESCE(%s::date, CURRENT_DATE)
+        if is_found:
+            if pet_context.get("chipid") is None:
+                return jsonify({"error": "Microchip record is required to mark found from timeline."}), 409
+
+            registered_vet = _vet_resolve_pet_registered_vet(
+                cursor,
+                int(pet_id),
+                pet_context.get("chip_vet_id"),
             )
-            RETURNING reportid, isfound, petid, createddate
-            """,
-            (is_found, pet_id, created_date),
-        )
-        created_report = cursor.fetchone()
+            target_vet_id = registered_vet.get("veterinarianid")
+            should_notify_vet = bool(target_vet_id and int(target_vet_id) > 0 and int(target_vet_id) != vet_id)
+            target_vet_id_int = int(target_vet_id) if target_vet_id and int(target_vet_id) > 0 else None
+
+            # Close unresolved lost reports for this pet first.
+            cursor.execute(
+                """
+                UPDATE lostfoundreport
+                SET isfound = TRUE
+                WHERE petid = %s
+                  AND COALESCE(isfound, FALSE) = FALSE
+                """,
+                (pet_id,),
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO lostfoundreport (
+                    isfound,
+                    petid,
+                    createddate,
+                    foundbyvetid,
+                    targetvetid,
+                    foundnote,
+                    foundat,
+                    vetreadat,
+                    ownerreadat
+                )
+                VALUES (
+                    TRUE,
+                    %s,
+                    COALESCE(%s::date, CURRENT_DATE),
+                    %s,
+                    %s,
+                    %s,
+                    NOW(),
+                    CASE WHEN %s THEN NULL ELSE NOW() END,
+                    NULL
+                )
+                RETURNING reportid, isfound, petid, createddate, foundbyvetid, targetvetid, foundnote, foundat
+                """,
+                (
+                    pet_id,
+                    created_date,
+                    vet_id,
+                    target_vet_id_int,
+                    "Found update from timeline action.",
+                    should_notify_vet,
+                ),
+            )
+            created_report = cursor.fetchone()
+        else:
+            cursor.execute(
+                """
+                INSERT INTO lostfoundreport (isfound, petid, createddate)
+                VALUES (
+                    %s,
+                    %s,
+                    COALESCE(%s::date, CURRENT_DATE)
+                )
+                RETURNING reportid, isfound, petid, createddate
+                """,
+                (False, pet_id, created_date),
+            )
+            created_report = cursor.fetchone()
 
         cursor.execute(
             """
