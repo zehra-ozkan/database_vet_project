@@ -379,17 +379,73 @@ def owner_pet_vaccinations(pet_id: int):
 
     rows = fetch_all(
         """
+        WITH scoped_plans AS (
+            SELECT
+                vp.planID,
+                vp.nextVaccinationDate
+            FROM VaccinationPlan vp
+            JOIN Pet p ON p.petID = vp.petID
+            WHERE vp.petID = %s
+              AND p.ownerID = %s
+        ),
+        plan_totals AS (
+            SELECT
+                sp.planID,
+                sp.nextVaccinationDate,
+                COUNT(vr.recordID)::int AS completedDoses,
+                MAX(vr.threshold) FILTER (
+                    WHERE vr.threshold IS NOT NULL
+                      AND vr.threshold > 0
+                )::int AS totalDoses
+            FROM scoped_plans sp
+            LEFT JOIN VaccinationRecord vr ON vr.planID = sp.planID
+            GROUP BY sp.planID, sp.nextVaccinationDate
+        ),
+        last_plan_record AS (
+            SELECT DISTINCT ON (vr.planID)
+                vr.planID,
+                vr.recordID,
+                vr.nextDueDate,
+                COALESCE(m.name, 'No data') AS vaccineName
+            FROM VaccinationRecord vr
+            LEFT JOIN Involves i ON i.recordID = vr.recordID
+            LEFT JOIN Vaccine v ON v.vaccineID = i.vaccineID
+            LEFT JOIN Medicine m ON m.medicineID = v.vaccineID
+            WHERE vr.planID IN (SELECT planID FROM scoped_plans)
+            ORDER BY vr.planID, vr.shotDate DESC NULLS LAST, vr.recordID DESC
+        )
         SELECT
-            vr.recordID,
-            vr.nextDueDate,
-            m.name AS vaccineName
-        FROM VaccinationRecord vr
-        JOIN Pet p ON p.petID = vr.petID
-        JOIN Involves i ON i.recordID = vr.recordID
-        JOIN Vaccine v ON v.vaccineID = i.vaccineID
-        JOIN Medicine m ON m.medicineID = v.vaccineID
-        WHERE vr.petID = %s AND p.ownerID = %s
-        ORDER BY vr.nextDueDate ASC
+            COALESCE(lpr.recordID, pt.planID) AS recordID,
+            COALESCE(lpr.vaccineName, 'No data') AS vaccineName,
+            COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) AS nextDueDate,
+            pt.planID,
+            COALESCE(pt.completedDoses, 0) AS completedDoses,
+            pt.totalDoses,
+            CASE
+                WHEN pt.totalDoses IS NOT NULL
+                     AND COALESCE(pt.completedDoses, 0) >= pt.totalDoses
+                    THEN 'Completed'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) IS NULL
+                    THEN 'No data'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) < CURRENT_DATE
+                    THEN 'Overdue'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) <= CURRENT_DATE + INTERVAL '7 days'
+                    THEN 'Due this week'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) <= CURRENT_DATE + INTERVAL '30 days'
+                    THEN 'Due'
+                ELSE 'Up to date'
+            END AS planStatus
+        FROM plan_totals pt
+        LEFT JOIN last_plan_record lpr ON lpr.planID = pt.planID
+        ORDER BY
+            CASE
+                WHEN pt.totalDoses IS NOT NULL
+                     AND COALESCE(pt.completedDoses, 0) >= pt.totalDoses
+                    THEN 2
+                ELSE 1
+            END,
+            COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) ASC NULLS LAST,
+            pt.planID ASC
         """,
         (pet_id, owner_id),
     )
@@ -910,11 +966,11 @@ def dashboard_welcome():
     due_soon_vaccinations = fetch_one(
         """
         SELECT COUNT(*) AS dueSoonVaccinationCount
-        FROM VaccinationRecord vr
-        JOIN Pet p ON p.petID = vr.petID
+        FROM VaccinationPlan vp
+        JOIN Pet p ON p.petID = vp.petID
         WHERE p.ownerID = %s
-          AND vr.nextDueDate IS NOT NULL
-          AND vr.nextDueDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days';
+          AND vp.nextVaccinationDate IS NOT NULL
+          AND vp.nextVaccinationDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days';
         """,
         (owner_id,),
     )

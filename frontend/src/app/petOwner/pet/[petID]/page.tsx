@@ -26,6 +26,10 @@ type VaccinationRow = {
   recordid: number;
   nextduedate: string | null;
   vaccinename: string | null;
+  planid: number;
+  completeddoses: number;
+  totaldoses: number | null;
+  planstatus: string;
 };
 
 type ActivityRow = {
@@ -301,19 +305,25 @@ export default function PetProfilePage() {
                     <thead>
                       <tr style={{ textAlign: "left", color: "rgba(15, 23, 42, 0.62)" }}>
                         <th style={{ padding: "10px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.12)" }}>Vaccine</th>
+                        <th style={{ padding: "10px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.12)" }}>Dose progress</th>
                         <th style={{ padding: "10px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.12)" }}>Next due</th>
                         <th style={{ padding: "10px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.12)" }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {vaccinations.map((row) => {
-                        const status = getVaccinationStatus(row.nextduedate);
+                        const status = getVaccinationStatus(row.nextduedate, row.planstatus);
+                        const progressText =
+                          row.totaldoses && row.totaldoses > 0
+                            ? `${row.completeddoses}/${row.totaldoses}`
+                            : `${row.completeddoses}/-`;
                         return (
-                          <tr key={row.recordid}>
+                          <tr key={row.planid}>
                             <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{row.vaccinename ?? "No data"}</td>
+                            <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{progressText}</td>
                             <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{formatDate(row.nextduedate)}</td>
                             <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>
-                              {status === "Due" || status === "Overdue" ? (
+                              {status === "Due" || status === "Due this week" || status === "Overdue" ? (
                                 <button
                                   type="button"
                                   onClick={openBookingModal}
@@ -346,7 +356,7 @@ export default function PetProfilePage() {
               <h2 className="page-title" style={{ fontSize: "18px" }}>
                 Recent Activity
               </h2>
-              <p className="page-subtitle">Pet owner's activity</p>
+              <p className="page-subtitle">Pet owner activity</p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
@@ -479,15 +489,22 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getVaccinationStatus(nextDueDate: string | null) {
+function getVaccinationStatus(nextDueDate: string | null, planStatus?: string | null) {
+  const normalizedPlanStatus = (planStatus ?? "").trim();
+  if (normalizedPlanStatus) {
+    return normalizedPlanStatus;
+  }
   if (!nextDueDate) return "No data";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueDate = new Date(nextDueDate);
   dueDate.setHours(0, 0, 0, 0);
+  const sevenDays = new Date(today);
+  sevenDays.setDate(today.getDate() + 7);
   const thirtyDays = new Date(today);
   thirtyDays.setDate(today.getDate() + 30);
   if (dueDate < today) return "Overdue";
+  if (dueDate <= sevenDays) return "Due this week";
   if (dueDate <= thirtyDays) return "Due";
   return "Up to date";
 }
@@ -527,9 +544,13 @@ function StatusBadge({ status }: { status: string }) {
     status === "Overdue"
       ? { background: "rgba(225, 29, 72, 0.12)", color: "#be123c" }
       : status === "Due"
+        ? { background: "rgba(250, 204, 21, 0.2)", color: "#854d0e" }
+        : status === "Due this week"
         ? { background: "rgba(217, 119, 6, 0.14)", color: "#b45309" }
         : status === "Up to date"
           ? { background: "rgba(5, 150, 105, 0.12)", color: "#047857" }
+          : status === "Completed"
+            ? { background: "rgba(15, 23, 42, 0.12)", color: "#0f172a" }
           : { background: "rgba(15, 23, 42, 0.08)", color: "rgba(15, 23, 42, 0.62)" };
   return (
     <span style={{ ...colors, display: "inline-flex", borderRadius: "999px", padding: "5px 10px", fontWeight: 800 }}>

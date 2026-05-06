@@ -280,13 +280,41 @@ def vet_get_dashboard():
                 WHERE a.veterinarianid = %s
             )
             SELECT
+                vr.recordid,
+                vr.planid,
                 vsv.petid,
                 vsv.petname AS pet_name,
                 COALESCE(vsv.vaccinename, 'Unknown') AS vaccine_name,
                 vsv.shotdate,
                 vsv.nextduedate,
+                vr.frequency,
+                vr.batchno,
+                vr.threshold AS total_doses,
+                COUNT(*) OVER (
+                    PARTITION BY vr.planid
+                    ORDER BY vr.shotdate ASC NULLS LAST, vr.recordid ASC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                )::int AS completed_doses_at_record,
+                COUNT(*) OVER (PARTITION BY vr.planid)::int AS completed_doses_total,
+                CASE
+                    WHEN vr.threshold IS NOT NULL
+                         AND vr.threshold > 0
+                        THEN GREATEST(vr.threshold - COUNT(*) OVER (PARTITION BY vr.planid), 0)::int
+                    ELSE NULL
+                END AS remaining_doses,
+                CASE
+                    WHEN vr.threshold IS NOT NULL
+                         AND vr.threshold > 0
+                         AND COUNT(*) OVER (PARTITION BY vr.planid) >= vr.threshold
+                        THEN TRUE
+                    ELSE FALSE
+                END AS plan_completed,
                 COALESCE(u.name, 'Unknown') AS admin_vet_name,
                 CASE
+                    WHEN vr.threshold IS NOT NULL
+                         AND vr.threshold > 0
+                         AND COUNT(*) OVER (PARTITION BY vr.planid) >= vr.threshold
+                        THEN 'Completed'
                     WHEN vsv.nextduedate IS NULL THEN 'Unknown'
                     WHEN vsv.vaccinationstatus = 'Overdue' THEN
                         'Overdue ' || (CURRENT_DATE - vsv.nextduedate)::text || 'd'

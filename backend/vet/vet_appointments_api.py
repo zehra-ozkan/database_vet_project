@@ -40,6 +40,19 @@ def _vet_parse_optional_int(raw_value):
     return parsed_value
 
 
+def _vet_parse_vaccination_plan_mode(raw_value):
+    """Parse optional vaccination plan mode."""
+    if raw_value is None or raw_value == "":
+        return "auto"
+    if not isinstance(raw_value, str):
+        raise ValueError("vaccinationPlanMode must be one of: new, existing.")
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"new", "existing"}:
+        return normalized
+    raise ValueError("vaccinationPlanMode must be one of: new, existing.")
+
+
 def _vet_parse_positive_int_list(raw_values, field_name):
     """Parse a list of positive integers."""
     if raw_values is None:
@@ -57,6 +70,32 @@ def _vet_parse_positive_int_list(raw_values, field_name):
             raise ValueError(f"{field_name} must contain positive integers.")
         parsed_values.append(parsed_value)
     return parsed_values
+
+
+def _vet_validate_prescription_medicine_ids(cursor, medicine_ids):
+    """Ensure prescription medicines are valid non-vaccine items."""
+    if not medicine_ids:
+        return
+
+    cursor.execute(
+        """
+        SELECT
+            m.medicineid,
+            COALESCE(m.name, 'Unknown') AS medicine_name
+        FROM medicine m
+        WHERE m.medicineid = ANY(%s::int[])
+          AND m.category::text = 'vaccine'
+        ORDER BY m.name ASC
+        """,
+        (medicine_ids,),
+    )
+    vaccine_rows = cursor.fetchall()
+    if vaccine_rows:
+        vaccine_names = ", ".join(row["medicine_name"] for row in vaccine_rows)
+        raise ValueError(
+            "Vaccines must be recorded in the Vaccination section, not in Prescription"
+            f" ({vaccine_names})."
+        )
 
 
 def _vet_parse_required_text(raw_value, field_name):
@@ -140,7 +179,7 @@ def _vet_error_response(exc):
             status_code = 400
 
     if "Medicine stock cannot become negative" in message:
-        return jsonify({"error": "Insufficient medicine stock for this prescription."}), 409
+        return jsonify({"error": "Insufficient medicine stock for this operation."}), 409
 
     if "maximum daily appointment limit" in message:
         return jsonify({"error": message}), 409
@@ -489,10 +528,56 @@ def vet_get_appointment_detail(appointment_id):
                 (selected_pet_id,),
             )
             vaccination_history = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT
+                    vp.planid,
+                    vp.nextvaccinationdate,
+                    vp.veterinarianid,
+                    COALESCE(u.name, 'Unknown') AS veterinarian_name,
+                    COALESCE(plan_stats.applied_dose_count, 0) AS applied_dose_count,
+                    plan_stats.total_dose_count,
+                    plan_stats.last_shot_date,
+                    latest_vaccine.latest_vaccine_id,
+                    latest_vaccine.latest_vaccine_name
+                FROM vaccinationplan vp
+                LEFT JOIN users u
+                    ON u.userid = vp.veterinarianid
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(vr.recordid)::int AS applied_dose_count,
+                        MAX(CASE WHEN vr.threshold IS NOT NULL AND vr.threshold > 0 THEN vr.threshold END)::int AS total_dose_count,
+                        MAX(vr.shotdate) AS last_shot_date
+                    FROM vaccinationrecord vr
+                    WHERE vr.planid = vp.planid
+                ) AS plan_stats ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        v.vaccineid AS latest_vaccine_id,
+                        COALESCE(m.name, 'Unknown') AS latest_vaccine_name
+                    FROM vaccinationrecord vr
+                    LEFT JOIN involves i ON i.recordid = vr.recordid
+                    LEFT JOIN vaccine v ON v.vaccineid = i.vaccineid
+                    LEFT JOIN medicine m ON m.medicineid = v.vaccineid
+                    WHERE vr.planid = vp.planid
+                    ORDER BY vr.shotdate DESC NULLS LAST, vr.recordid DESC
+                    LIMIT 1
+                ) AS latest_vaccine ON TRUE
+                WHERE vp.petid = %s
+                ORDER BY
+                    CASE WHEN vp.nextvaccinationdate IS NULL THEN 1 ELSE 0 END,
+                    vp.nextvaccinationdate ASC NULLS LAST,
+                    vp.planid DESC
+                """,
+                (selected_pet_id,),
+            )
+            existing_vaccination_plans = cursor.fetchall()
         else:
             medical_history = []
             prescription_history = []
             vaccination_history = []
+            existing_vaccination_plans = []
 
         cursor.execute(
             """
@@ -611,6 +696,7 @@ def vet_get_appointment_detail(appointment_id):
                 "medical_history": vet_serialize_records(medical_history),
                 "prescription_history": vet_serialize_records(prescription_history),
                 "vaccination_history": vet_serialize_records(vaccination_history),
+                "existing_vaccination_plans": vet_serialize_records(existing_vaccination_plans),
                 "latest_visit_summary": _vet_serialize_row(latest_visit_summary),
                 "is_completed": existing_bill is not None,
                 "existing_bill": _vet_serialize_row(existing_bill),
@@ -748,6 +834,11 @@ def vet_create_prescription(appointment_id):
         allowed_pet_ids = {int(row["petid"]) for row in owner_pets}
         if pet_id not in allowed_pet_ids:
             return jsonify({"error": "Selected pet does not belong to this appointment owner."}), 409
+
+        try:
+            _vet_validate_prescription_medicine_ids(cursor, medicine_ids)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         cursor.execute(
             """
@@ -1193,6 +1284,8 @@ def vet_finalize_appointment(appointment_id):
         )
 
         vaccination_vaccine_id = _vet_parse_optional_int(payload.get("vaccinationVaccineId"))
+        vaccination_plan_mode = _vet_parse_vaccination_plan_mode(payload.get("vaccinationPlanMode"))
+        vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
         vaccination_shot_date = _vet_parse_optional_date(
             payload.get("vaccinationShotDate"),
             "vaccinationShotDate",
@@ -1214,6 +1307,14 @@ def vet_finalize_appointment(appointment_id):
             and vaccination_frequency_legacy_raw.strip()
             else None
         )
+        vaccination_batch_no_raw = payload.get("vaccinationBatchNo")
+        if vaccination_batch_no_raw is None:
+            vaccination_batch_no = None
+        elif not isinstance(vaccination_batch_no_raw, str):
+            raise ValueError("vaccinationBatchNo must be a string.")
+        else:
+            normalized_batch_no = vaccination_batch_no_raw.strip()
+            vaccination_batch_no = normalized_batch_no if normalized_batch_no else None
 
         new_datetime_raw = payload.get("newDateTime")
         parsed_datetime = None
@@ -1231,29 +1332,24 @@ def vet_finalize_appointment(appointment_id):
     if treatment and selected_pet_id is None:
         return jsonify({"error": "petId is required when treatment is provided."}), 400
     if vaccination_vaccine_id is None and (
-        vaccination_shot_date is not None
+        vaccination_plan_id is not None
+        or vaccination_plan_mode in {"new", "existing"}
+        or vaccination_shot_date is not None
         or vaccination_next_due_date is not None
         or vaccination_frequency_days is not None
         or vaccination_dose_count is not None
         or vaccination_frequency_legacy is not None
+        or vaccination_batch_no is not None
     ):
         return jsonify({"error": "vaccinationVaccineId is required when vaccination details are provided."}), 400
     if vaccination_vaccine_id is not None and selected_pet_id is None:
         return jsonify({"error": "petId is required when vaccination is provided."}), 400
-    if (
-        vaccination_vaccine_id is not None
-        and vaccination_next_due_date is None
-        and vaccination_frequency_days is None
-        and vaccination_dose_count is None
-    ):
-        return jsonify(
-            {
-                "error": (
-                    "Provide vaccinationNextDueDate, vaccinationFrequencyDays, "
-                    "or vaccinationDoseCount for vaccination records."
-                )
-            }
-        ), 400
+    if vaccination_vaccine_id is not None and vaccination_plan_mode == "existing" and vaccination_plan_id is None:
+        return jsonify({"error": "Select an existing vaccination plan before completing."}), 400
+    if vaccination_vaccine_id is not None and vaccination_plan_mode == "new" and vaccination_plan_id is not None:
+        return jsonify({"error": "Do not send vaccinationPlanId when creating a new plan."}), 400
+    if vaccination_vaccine_id is not None and vaccination_batch_no is None:
+        return jsonify({"error": "vaccinationBatchNo is required when vaccination is provided."}), 400
     if (referee_vet_id is None) != (referral_diagnosis is None):
         return jsonify({"error": "refereeVetId and referralDiagnosis must be provided together."}), 400
     if referee_vet_id is not None and referee_vet_id == vet_id:
@@ -1284,6 +1380,7 @@ def vet_finalize_appointment(appointment_id):
             return jsonify({"error": "Appointment is already completed."}), 409
 
         follow_up_appointment = None
+        follow_up_vaccination_plan_id = appointment["vaccinationplanid"]
         current_datetime = appointment["datetime"]
         if isinstance(current_datetime, datetime):
             current_datetime = current_datetime.replace(second=0, microsecond=0)
@@ -1331,6 +1428,11 @@ def vet_finalize_appointment(appointment_id):
             if selected_pet_id not in allowed_pet_ids:
                 return jsonify({"error": "Selected pet does not belong to this appointment owner."}), 409
 
+        try:
+            _vet_validate_prescription_medicine_ids(cursor, medicine_ids)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
         if treatment:
             cursor.execute(
                 """
@@ -1374,60 +1476,99 @@ def vet_finalize_appointment(appointment_id):
             elif vaccination_frequency_legacy is not None:
                 vaccination_frequency = vaccination_frequency_legacy
 
-            resolved_plan_id = appointment["vaccinationplanid"]
+            if vaccination_plan_mode == "existing":
+                resolved_plan_id = vaccination_plan_id
+            elif vaccination_plan_mode == "new":
+                resolved_plan_id = None
+            else:
+                resolved_plan_id = (
+                    vaccination_plan_id
+                    if vaccination_plan_id is not None
+                    else appointment["vaccinationplanid"]
+                )
+
+            existing_plan_next_due_date = None
+            doses_completed_before = 0
+            inferred_total_dose_count = None
+
             if resolved_plan_id is not None:
                 cursor.execute(
                     """
-                    SELECT vp.planid
+                    SELECT
+                        vp.planid,
+                        vp.nextvaccinationdate
                     FROM vaccinationplan vp
                     WHERE vp.planid = %s
                       AND vp.petid = %s
                     """,
                     (resolved_plan_id, selected_pet_id),
                 )
-                if cursor.fetchone() is None:
-                    resolved_plan_id = None
+                existing_plan = cursor.fetchone()
+                if existing_plan is None:
+                    return jsonify(
+                        {"error": "Selected vaccination plan is not valid for the selected pet."}
+                    ), 409
+                existing_plan_next_due_date = existing_plan["nextvaccinationdate"]
 
-            if resolved_plan_id is None:
-                doses_completed_before = 0
                 cursor.execute(
                     """
-                    INSERT INTO vaccinationplan (nextvaccinationdate, petid, veterinarianid)
-                    VALUES (%s, %s, %s)
-                    RETURNING planid
-                    """,
-                    (vaccination_next_due_date, selected_pet_id, vet_id),
-                )
-                resolved_plan_id = cursor.fetchone()["planid"]
-            else:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)::int AS dose_count
-                    FROM vaccinationrecord
-                    WHERE planid = %s
-                    """,
-                    (resolved_plan_id,),
-                )
-                existing_dose_row = cursor.fetchone()
-                doses_completed_before = int(existing_dose_row["dose_count"]) if existing_dose_row else 0
-
-            inferred_total_dose_count = None
-            if vaccination_dose_count is None:
-                cursor.execute(
-                    """
-                    SELECT vr.threshold
+                    SELECT
+                        v.vaccineid,
+                        COALESCE(m.name, 'Unknown') AS vaccine_name
                     FROM vaccinationrecord vr
+                    LEFT JOIN involves i ON i.recordid = vr.recordid
+                    LEFT JOIN vaccine v ON v.vaccineid = i.vaccineid
+                    LEFT JOIN medicine m ON m.medicineid = v.vaccineid
                     WHERE vr.planid = %s
-                      AND vr.threshold IS NOT NULL
-                      AND vr.threshold > 0
                     ORDER BY vr.shotdate DESC NULLS LAST, vr.recordid DESC
                     LIMIT 1
                     """,
                     (resolved_plan_id,),
                 )
-                inferred_dose_row = cursor.fetchone()
-                if inferred_dose_row and inferred_dose_row.get("threshold"):
-                    inferred_total_dose_count = int(inferred_dose_row["threshold"])
+                existing_plan_vaccine = cursor.fetchone()
+                if (
+                    existing_plan_vaccine
+                    and existing_plan_vaccine.get("vaccineid") is not None
+                    and int(existing_plan_vaccine["vaccineid"]) != int(vaccination_vaccine_id)
+                ):
+                    return jsonify(
+                        {
+                            "error": (
+                                "Selected plan is already linked to "
+                                f"{existing_plan_vaccine['vaccine_name']}. "
+                                "Choose that vaccine or start a new plan."
+                            )
+                        }
+                    ), 409
+
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*)::int AS dose_count,
+                        MAX(CASE WHEN vr.threshold IS NOT NULL AND vr.threshold > 0 THEN vr.threshold END)::int AS total_dose_count
+                    FROM vaccinationrecord vr
+                    WHERE vr.planid = %s
+                    """,
+                    (resolved_plan_id,),
+                )
+                plan_stats = cursor.fetchone() or {}
+                doses_completed_before = int(plan_stats.get("dose_count") or 0)
+                if plan_stats.get("total_dose_count"):
+                    inferred_total_dose_count = int(plan_stats["total_dose_count"])
+            else:
+                if (
+                    vaccination_next_due_date is None
+                    and vaccination_frequency_days is None
+                    and vaccination_dose_count is None
+                ):
+                    return jsonify(
+                        {
+                            "error": (
+                                "New plan requires next due date, frequency days, "
+                                "or total doses."
+                            )
+                        }
+                    ), 400
 
             effective_total_dose_count = (
                 vaccination_dose_count
@@ -1455,6 +1596,8 @@ def vet_finalize_appointment(appointment_id):
             resolved_next_due_date = vaccination_next_due_date
             if not plan_completed and resolved_next_due_date is None and vaccination_frequency_days is not None:
                 resolved_next_due_date = effective_shot_date + timedelta(days=vaccination_frequency_days)
+            if not plan_completed and resolved_next_due_date is None and resolved_plan_id is not None:
+                resolved_next_due_date = existing_plan_next_due_date
             if plan_completed:
                 resolved_next_due_date = None
             if not plan_completed and resolved_next_due_date is None:
@@ -1466,6 +1609,17 @@ def vet_finalize_appointment(appointment_id):
                         )
                     }
                 ), 400
+
+            if resolved_plan_id is None:
+                cursor.execute(
+                    """
+                    INSERT INTO vaccinationplan (nextvaccinationdate, petid, veterinarianid)
+                    VALUES (%s, %s, %s)
+                    RETURNING planid
+                    """,
+                    (resolved_next_due_date, selected_pet_id, vet_id),
+                )
+                resolved_plan_id = cursor.fetchone()["planid"]
 
             cursor.execute(
                 """
@@ -1484,17 +1638,19 @@ def vet_finalize_appointment(appointment_id):
                     shotdate,
                     frequency,
                     nextduedate,
+                    batchno,
                     planid,
                     petid
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING recordid, threshold, shotdate, frequency, nextduedate, planid, petid
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING recordid, threshold, shotdate, frequency, nextduedate, batchno, planid, petid
                 """,
                 (
                     effective_total_dose_count,
                     effective_shot_date,
                     vaccination_frequency,
                     resolved_next_due_date,
+                    vaccination_batch_no,
                     resolved_plan_id,
                     selected_pet_id,
                 ),
@@ -1510,6 +1666,7 @@ def vet_finalize_appointment(appointment_id):
                 (created_vaccination_record["recordid"], vaccination_vaccine_id),
             )
             linked_vaccine = cursor.fetchone()
+            follow_up_vaccination_plan_id = resolved_plan_id
 
         created_referral = None
         if referee_vet_id is not None and referral_diagnosis is not None:
@@ -1551,7 +1708,7 @@ def vet_finalize_appointment(appointment_id):
                 (
                     appointment["atype"],
                     slot_datetime,
-                    appointment["vaccinationplanid"],
+                    follow_up_vaccination_plan_id,
                     vet_id,
                     appointment["petownerid"],
                 ),

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "./vet_error_messages";
 
 export type VetSearchValue = string | string[] | undefined;
 
@@ -28,16 +29,6 @@ const vetApiBaseCandidates = Array.from(
   )
 );
 
-function buildErrorMessage(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && "error" in payload) {
-    const errorValue = (payload as { error?: unknown }).error;
-    if (typeof errorValue === "string") {
-      return errorValue;
-    }
-  }
-  return `HTTP ${status}`;
-}
-
 export async function vetFetchJson<T>(
   endpoint: string
 ): Promise<{ data: T | null; error: string | null }> {
@@ -48,14 +39,12 @@ export async function vetFetchJson<T>(
       const response = await fetch(`${apiBase}${endpoint}`, { cache: "no-store" });
       const payload = (await response.json()) as T & { error?: string };
       if (!response.ok) {
-        lastError = buildErrorMessage(payload, response.status);
+        lastError = vetBuildApiErrorMessage(payload, response.status, "Data could not be loaded.");
         continue;
       }
       return { data: payload, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Data could not be loaded.");
     }
   }
 

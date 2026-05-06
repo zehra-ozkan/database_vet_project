@@ -50,6 +50,18 @@ type VetAppointmentMedicineOption = {
   category?: string | null;
 };
 
+type VetExistingVaccinationPlan = {
+  planid: number;
+  nextvaccinationdate: string | null;
+  veterinarianid: number | null;
+  veterinarian_name: string | null;
+  applied_dose_count: number;
+  total_dose_count: number | null;
+  last_shot_date: string | null;
+  latest_vaccine_id: number | null;
+  latest_vaccine_name: string | null;
+};
+
 type VetAppointmentReferralTarget = {
   veterinarianid: number;
   veterinarian_name: string;
@@ -91,6 +103,7 @@ type VetAppointmentDetailResponse = {
   medical_history: VetAppointmentMedicalHistoryItem[];
   prescription_history: VetAppointmentPrescriptionHistoryItem[];
   vaccination_history: VetAppointmentVaccinationHistoryItem[];
+  existing_vaccination_plans: VetExistingVaccinationPlan[];
   latest_visit_summary: {
     visitid: string;
     appointmentid: number;
@@ -480,6 +493,7 @@ export default async function AppointmentDetailPage({
             defaultAppointmentDateTime={defaultAppointmentDateTime}
             isCompleted={data.is_completed}
             medicines={data.available_medicines}
+            existingVaccinationPlans={data.existing_vaccination_plans}
             referralTargets={data.referral_targets}
           />
         ) : null}

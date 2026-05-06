@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
+import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "../vet_error_messages";
 
 type ReferralTarget = {
   veterinarianid: number;
@@ -25,16 +26,6 @@ const clientApiBaseCandidates = Array.from(
   )
 );
 
-function buildErrorMessage(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && "error" in payload) {
-    const errorValue = (payload as { error?: unknown }).error;
-    if (typeof errorValue === "string") {
-      return errorValue;
-    }
-  }
-  return `HTTP ${status}`;
-}
-
 async function postReferralAction(
   payload: Record<string, unknown>
 ): Promise<{ error: string | null }> {
@@ -51,14 +42,12 @@ async function postReferralAction(
       });
       const responsePayload = (await response.json()) as { error?: string };
       if (!response.ok) {
-        lastError = buildErrorMessage(responsePayload, response.status);
+        lastError = vetBuildApiErrorMessage(responsePayload, response.status, "Request failed.");
         continue;
       }
       return { error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Request failed.");
     }
   }
 

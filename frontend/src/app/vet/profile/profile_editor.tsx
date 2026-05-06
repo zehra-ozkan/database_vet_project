@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "../dashboard/vet_dashboard_page.module.css";
+import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "../vet_error_messages";
 
 type VetProfileEditable = {
   email: string | null;
@@ -31,16 +32,6 @@ const clientApiBaseCandidates = Array.from(
   )
 );
 
-function buildErrorMessage(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && "error" in payload) {
-    const errorValue = (payload as { error?: unknown }).error;
-    if (typeof errorValue === "string") {
-      return errorValue;
-    }
-  }
-  return `HTTP ${status}`;
-}
-
 async function updateVetProfile(
   payload: Record<string, unknown>
 ): Promise<{ data: VetProfileResponse | null; error: string | null }> {
@@ -57,14 +48,12 @@ async function updateVetProfile(
       });
       const responsePayload = (await response.json()) as VetProfileResponse;
       if (!response.ok) {
-        lastError = buildErrorMessage(responsePayload, response.status);
+        lastError = vetBuildApiErrorMessage(responsePayload, response.status, "Request failed.");
         continue;
       }
       return { data: responsePayload, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Request failed.");
     }
   }
 

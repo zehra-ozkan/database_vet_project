@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "../../dashboard/vet_dashboard_page.module.css";
+import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "../../vet_error_messages";
 
 type MedicineOption = {
   medicineid: number;
@@ -19,6 +20,18 @@ type ReferralTarget = {
   branch_name: string;
 };
 
+type ExistingVaccinationPlan = {
+  planid: number;
+  nextvaccinationdate: string | null;
+  veterinarianid: number | null;
+  veterinarian_name: string | null;
+  applied_dose_count: number;
+  total_dose_count: number | null;
+  last_shot_date: string | null;
+  latest_vaccine_id: number | null;
+  latest_vaccine_name: string | null;
+};
+
 type AppointmentActionsProps = {
   appointmentId: number;
   vetId: number;
@@ -27,6 +40,7 @@ type AppointmentActionsProps = {
   defaultAppointmentDateTime: string;
   isCompleted: boolean;
   medicines: MedicineOption[];
+  existingVaccinationPlans: ExistingVaccinationPlan[];
   referralTargets: ReferralTarget[];
 };
 
@@ -38,6 +52,9 @@ type AppointmentDraft = {
   refereeVetId: number | null;
   referralDiagnosis: string;
   vaccinationVaccineId: number | null;
+  vaccinationPlanMode: "new" | "existing";
+  vaccinationPlanId: number | null;
+  vaccinationBatchNo: string;
   vaccinationShotDate: string;
   vaccinationNextDueDate: string;
   vaccinationFrequencyDays: string;
@@ -65,16 +82,6 @@ const clientApiBaseCandidates = Array.from(
   )
 );
 
-function buildErrorMessage(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && "error" in payload) {
-    const errorValue = (payload as { error?: unknown }).error;
-    if (typeof errorValue === "string") {
-      return errorValue;
-    }
-  }
-  return `HTTP ${status}`;
-}
-
 async function postVetAction<T>(
   endpoint: string,
   payload: Record<string, unknown>
@@ -92,14 +99,12 @@ async function postVetAction<T>(
       });
       const responsePayload = (await response.json()) as T & { error?: string };
       if (!response.ok) {
-        lastError = buildErrorMessage(responsePayload, response.status);
+        lastError = vetBuildApiErrorMessage(responsePayload, response.status, "Request could not be completed.");
         continue;
       }
       return { data: responsePayload, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Request could not be completed.");
     }
   }
 
@@ -114,6 +119,7 @@ export default function AppointmentActions({
   defaultAppointmentDateTime,
   isCompleted,
   medicines,
+  existingVaccinationPlans,
   referralTargets,
 }: AppointmentActionsProps) {
   const router = useRouter();
@@ -129,6 +135,9 @@ export default function AppointmentActions({
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
   const [prescriptionSaving, setPrescriptionSaving] = useState(false);
   const [vaccinationVaccineId, setVaccinationVaccineId] = useState<number | null>(null);
+  const [vaccinationPlanMode, setVaccinationPlanMode] = useState<"new" | "existing">("new");
+  const [vaccinationPlanId, setVaccinationPlanId] = useState<number | null>(null);
+  const [vaccinationBatchNo, setVaccinationBatchNo] = useState("");
   const [vaccinationShotDate, setVaccinationShotDate] = useState("");
   const [vaccinationNextDueDate, setVaccinationNextDueDate] = useState("");
   const [vaccinationFrequencyDays, setVaccinationFrequencyDays] = useState("");
@@ -156,7 +165,11 @@ export default function AppointmentActions({
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
 
   const availableSelectableMedicines = useMemo(
-    () => medicines.filter((medicine) => (medicine.quantity ?? 0) > 0),
+    () =>
+      medicines.filter(
+        (medicine) =>
+          (medicine.quantity ?? 0) > 0 && String(medicine.category ?? "").toLowerCase() !== "vaccine"
+      ),
     [medicines]
   );
   const availableVaccines = useMemo(
@@ -166,6 +179,13 @@ export default function AppointmentActions({
           String(medicine.category ?? "").toLowerCase() === "vaccine" && (medicine.quantity ?? 0) > 0
       ),
     [medicines]
+  );
+  const selectedExistingVaccinationPlan = useMemo(
+    () =>
+      vaccinationPlanMode === "existing"
+        ? existingVaccinationPlans.find((plan) => plan.planid === vaccinationPlanId) ?? null
+        : null,
+    [existingVaccinationPlans, vaccinationPlanId, vaccinationPlanMode]
   );
   const actionsLocked = isCompletedLocal;
   const draftStorageKey = useMemo(
@@ -183,6 +203,9 @@ export default function AppointmentActions({
       treatment,
       selectedMedicineIds,
       vaccinationVaccineId,
+      vaccinationPlanMode,
+      vaccinationPlanId,
+      vaccinationBatchNo,
       vaccinationShotDate,
       vaccinationNextDueDate,
       vaccinationFrequencyDays,
@@ -235,8 +258,17 @@ export default function AppointmentActions({
       if (typeof parsedDraft.vaccinationVaccineId === "number" && parsedDraft.vaccinationVaccineId > 0) {
         setVaccinationVaccineId(parsedDraft.vaccinationVaccineId);
       }
+      if (parsedDraft.vaccinationPlanMode === "new" || parsedDraft.vaccinationPlanMode === "existing") {
+        setVaccinationPlanMode(parsedDraft.vaccinationPlanMode);
+      }
+      if (typeof parsedDraft.vaccinationPlanId === "number" && parsedDraft.vaccinationPlanId > 0) {
+        setVaccinationPlanId(parsedDraft.vaccinationPlanId);
+      }
       if (typeof parsedDraft.vaccinationShotDate === "string") {
         setVaccinationShotDate(parsedDraft.vaccinationShotDate);
+      }
+      if (typeof parsedDraft.vaccinationBatchNo === "string") {
+        setVaccinationBatchNo(parsedDraft.vaccinationBatchNo);
       }
       if (typeof parsedDraft.vaccinationNextDueDate === "string") {
         setVaccinationNextDueDate(parsedDraft.vaccinationNextDueDate);
@@ -283,6 +315,19 @@ export default function AppointmentActions({
       // Ignore malformed client drafts.
     }
   }, [draftStorageKey, selectedPetId, referralTargets]);
+
+  useEffect(() => {
+    if (vaccinationPlanMode !== "existing") {
+      return;
+    }
+    if (vaccinationPlanId === null) {
+      return;
+    }
+    const exists = existingVaccinationPlans.some((plan) => plan.planid === vaccinationPlanId);
+    if (!exists) {
+      setVaccinationPlanId(null);
+    }
+  }, [existingVaccinationPlans, vaccinationPlanId, vaccinationPlanMode]);
 
   const parseNonNegativeNumber = (value: string, label: string): { value: number | null; error: string | null } => {
     const normalizedValue = value.trim();
@@ -419,6 +464,15 @@ export default function AppointmentActions({
       setVaccinationError("Select a vaccine.");
       return;
     }
+    if (vaccinationPlanMode === "existing" && !vaccinationPlanId) {
+      setVaccinationError("Select an existing vaccination plan.");
+      return;
+    }
+    const normalizedVaccinationBatchNo = vaccinationBatchNo.trim();
+    if (!normalizedVaccinationBatchNo) {
+      setVaccinationError("Batch no is required for vaccination.");
+      return;
+    }
 
     const frequencyDaysResult = parseOptionalPositiveInteger(
       vaccinationFrequencyDays,
@@ -443,11 +497,12 @@ export default function AppointmentActions({
       normalizedNextDueDate =
         deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
     }
-    if (
+    const requiresNewPlanSchedule =
+      vaccinationPlanMode === "new" &&
       !normalizedNextDueDate &&
       frequencyDaysResult.value === null &&
-      doseCountResult.value === null
-    ) {
+      doseCountResult.value === null;
+    if (requiresNewPlanSchedule) {
       setVaccinationError(
         "Provide next due date, frequency days, or total doses."
       );
@@ -457,12 +512,18 @@ export default function AppointmentActions({
     setVaccinationError(null);
     setVaccinationMessage(null);
     setVaccinationSaving(true);
+    if (normalizedVaccinationBatchNo !== vaccinationBatchNo) {
+      setVaccinationBatchNo(normalizedVaccinationBatchNo);
+    }
     if (normalizedNextDueDate && normalizedNextDueDate !== vaccinationNextDueDate) {
       setVaccinationNextDueDate(normalizedNextDueDate);
     }
     persistDraft({
       selectedPetId,
       vaccinationVaccineId,
+      vaccinationPlanMode,
+      vaccinationPlanId: vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
+      vaccinationBatchNo: normalizedVaccinationBatchNo,
       vaccinationShotDate,
       vaccinationNextDueDate: normalizedNextDueDate,
       vaccinationFrequencyDays,
@@ -515,6 +576,15 @@ export default function AppointmentActions({
       setCompletionError("Select a pet before completing with vaccination.");
       return;
     }
+    if (vaccinationVaccineId && vaccinationPlanMode === "existing" && !vaccinationPlanId) {
+      setCompletionError("Select an existing vaccination plan.");
+      return;
+    }
+    const normalizedVaccinationBatchNo = vaccinationBatchNo.trim();
+    if (vaccinationVaccineId && !normalizedVaccinationBatchNo) {
+      setCompletionError("Vaccination batch no is required.");
+      return;
+    }
     const frequencyDaysResult = parseOptionalPositiveInteger(
       vaccinationFrequencyDays,
       "Frequency days"
@@ -538,12 +608,13 @@ export default function AppointmentActions({
       normalizedVaccinationNextDueDate =
         deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
     }
-    if (
+    const requiresNewPlanSchedule =
       vaccinationVaccineId &&
+      vaccinationPlanMode === "new" &&
       !normalizedVaccinationNextDueDate &&
       frequencyDaysResult.value === null &&
-      doseCountResult.value === null
-    ) {
+      doseCountResult.value === null;
+    if (requiresNewPlanSchedule) {
       setCompletionError(
         "Vaccination requires next due date, frequency days, or total doses."
       );
@@ -569,6 +640,9 @@ export default function AppointmentActions({
       treatment: normalizedTreatment,
       selectedMedicineIds,
       vaccinationVaccineId,
+      vaccinationPlanMode,
+      vaccinationPlanId: vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
+      vaccinationBatchNo: normalizedVaccinationBatchNo,
       vaccinationShotDate,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate,
       vaccinationFrequencyDays,
@@ -590,6 +664,10 @@ export default function AppointmentActions({
       treatment: normalizedTreatment || null,
       medicineIds: selectedMedicineIds,
       vaccinationVaccineId: vaccinationVaccineId ?? null,
+      vaccinationPlanMode: vaccinationVaccineId ? vaccinationPlanMode : null,
+      vaccinationPlanId:
+        vaccinationVaccineId && vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
+      vaccinationBatchNo: normalizedVaccinationBatchNo || null,
       vaccinationShotDate: vaccinationShotDate || null,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate || null,
       vaccinationFrequencyDays: frequencyDaysResult.value,
@@ -815,6 +893,69 @@ export default function AppointmentActions({
         <h2 className={styles.pageTitle}>Vaccination</h2>
         <form onSubmit={submitVaccination} className={`${styles.formRow} ${styles.mt1}`}>
           <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Plan action</label>
+            <select
+              className={styles.inputControl}
+              value={vaccinationPlanMode}
+              onChange={(event) => {
+                const mode = event.target.value === "existing" ? "existing" : "new";
+                setVaccinationPlanMode(mode);
+                if (mode === "new") {
+                  setVaccinationPlanId(null);
+                }
+              }}
+              disabled={vaccinationSaving}
+            >
+              <option value="new">Create new plan</option>
+              <option value="existing">Apply dose to existing plan</option>
+            </select>
+          </div>
+          {vaccinationPlanMode === "existing" ? (
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Existing plan</label>
+              <select
+                className={styles.inputControl}
+                value={vaccinationPlanId ?? ""}
+                onChange={(event) => {
+                  const rawValue = event.target.value;
+                  if (!rawValue) {
+                    setVaccinationPlanId(null);
+                    return;
+                  }
+                  const parsedValue = Number.parseInt(rawValue, 10);
+                  const selectedPlan =
+                    Number.isInteger(parsedValue) && parsedValue > 0
+                      ? existingVaccinationPlans.find((plan) => plan.planid === parsedValue) ?? null
+                      : null;
+                  setVaccinationPlanId(selectedPlan ? selectedPlan.planid : null);
+                  if (selectedPlan?.latest_vaccine_id && !vaccinationVaccineId) {
+                    setVaccinationVaccineId(selectedPlan.latest_vaccine_id);
+                  }
+                }}
+                disabled={vaccinationSaving || existingVaccinationPlans.length === 0}
+              >
+                <option value="">
+                  {existingVaccinationPlans.length === 0
+                    ? "No existing plan for this pet"
+                    : "Select a vaccination plan"}
+                </option>
+                {existingVaccinationPlans.map((plan) => {
+                  const appliedLabel = plan.applied_dose_count;
+                  const totalLabel = plan.total_dose_count ?? "?";
+                  const dueLabel = plan.nextvaccinationdate
+                    ? `Due ${new Date(plan.nextvaccinationdate).toLocaleDateString("tr-TR")}`
+                    : "Completed";
+                  const vaccineLabel = plan.latest_vaccine_name ?? "Unknown vaccine";
+                  return (
+                    <option key={plan.planid} value={plan.planid}>
+                      #{plan.planid} · {vaccineLabel} · Dose {appliedLabel}/{totalLabel} · {dueLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          ) : null}
+          <div className={styles.formGroup}>
             <label className={styles.formLabel}>Vaccine</label>
             <select
               className={styles.inputControl}
@@ -838,6 +979,18 @@ export default function AppointmentActions({
               ))}
             </select>
           </div>
+          {selectedExistingVaccinationPlan ? (
+            <div className={styles.formGroup} style={{ minWidth: "100%" }}>
+              <p className={styles.tileSub}>
+                Selected plan #{selectedExistingVaccinationPlan.planid}: dose{" "}
+                {selectedExistingVaccinationPlan.applied_dose_count}/
+                {selectedExistingVaccinationPlan.total_dose_count ?? "?"} · next due{" "}
+                {selectedExistingVaccinationPlan.nextvaccinationdate
+                  ? new Date(selectedExistingVaccinationPlan.nextvaccinationdate).toLocaleDateString("tr-TR")
+                  : "completed"}
+              </p>
+            </div>
+          ) : null}
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>Shot date (optional)</label>
             <input
@@ -845,6 +998,17 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={vaccinationShotDate}
               onChange={(event) => setVaccinationShotDate(event.target.value)}
+              disabled={vaccinationSaving}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Batch no</label>
+            <input
+              type="text"
+              className={styles.inputControl}
+              value={vaccinationBatchNo}
+              onChange={(event) => setVaccinationBatchNo(event.target.value)}
+              placeholder="e.g. RB-2026-05-12-A"
               disabled={vaccinationSaving}
             />
           </div>
@@ -882,7 +1046,15 @@ export default function AppointmentActions({
               disabled={vaccinationSaving}
             />
           </div>
-          <button type="submit" className={styles.btn} disabled={vaccinationSaving || availableVaccines.length === 0}>
+          <button
+            type="submit"
+            className={styles.btn}
+            disabled={
+              vaccinationSaving ||
+              availableVaccines.length === 0 ||
+              (vaccinationPlanMode === "existing" && existingVaccinationPlans.length === 0)
+            }
+          >
             {vaccinationSaving ? "Saving..." : "Save vaccination draft"}
           </button>
         </form>

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import styles from "./vet_dashboard_page.module.css";
+import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "../vet_error_messages";
 
 type MicrochipQuickActionsProps = {
   vetId: number | null;
@@ -83,16 +84,6 @@ const vetDashboardApiBaseCandidates = Array.from(
   )
 );
 
-function buildErrorMessage(payload: unknown, status: number): string {
-  if (payload && typeof payload === "object" && "error" in payload) {
-    const errorValue = (payload as { error?: unknown }).error;
-    if (typeof errorValue === "string") {
-      return errorValue;
-    }
-  }
-  return `HTTP ${status}`;
-}
-
 async function fetchMicrochipLookup(
   vetId: number,
   chipId: number
@@ -103,14 +94,12 @@ async function fetchMicrochipLookup(
       const response = await fetch(`${apiBase}/vet/microchip/lookup?vetId=${vetId}&chipId=${chipId}`);
       const payload = (await response.json()) as MicrochipLookupResponse & { error?: unknown };
       if (!response.ok) {
-        lastError = buildErrorMessage(payload, response.status);
+        lastError = vetBuildApiErrorMessage(payload, response.status, "Lookup request failed.");
         continue;
       }
       return { data: payload, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Lookup request failed.");
     }
   }
   return { data: null, error: lastError };
@@ -131,14 +120,12 @@ async function sendFoundNews(
       });
       const payload = (await response.json()) as { error?: unknown };
       if (!response.ok) {
-        lastError = buildErrorMessage(payload, response.status);
+        lastError = vetBuildApiErrorMessage(payload, response.status, "Send request failed.");
         continue;
       }
       return { error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Send request failed.");
     }
   }
   return { error: lastError };
@@ -153,14 +140,12 @@ async function fetchMicrochipNews(
       const response = await fetch(`${apiBase}/vet/microchip/news?vetId=${vetId}`);
       const payload = (await response.json()) as MicrochipNewsResponse & { error?: unknown };
       if (!response.ok) {
-        lastError = buildErrorMessage(payload, response.status);
+        lastError = vetBuildApiErrorMessage(payload, response.status, "News request failed.");
         continue;
       }
       return { data: payload, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "News request failed.");
     }
   }
   return { data: null, error: lastError };
@@ -188,7 +173,11 @@ async function fetchReferralTargets(
       const response = await fetch(`${apiBase}/vet/timeline?vetId=${vetId}`);
       const payload = (await response.json()) as TimelineReferralTargetResponse;
       if (!response.ok) {
-        lastError = buildErrorMessage(payload, response.status);
+        lastError = vetBuildApiErrorMessage(
+          payload,
+          response.status,
+          "Referral targets could not be loaded."
+        );
         continue;
       }
       const targets = Array.isArray(payload.referral_targets)
@@ -196,9 +185,7 @@ async function fetchReferralTargets(
         : [];
       return { data: targets, error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Referral targets could not be loaded.");
     }
   }
   return { data: null, error: lastError };
@@ -225,14 +212,12 @@ async function postReferralAction(
       });
       const responsePayload = (await response.json()) as { error?: unknown };
       if (!response.ok) {
-        lastError = buildErrorMessage(responsePayload, response.status);
+        lastError = vetBuildApiErrorMessage(responsePayload, response.status, "Request failed.");
         continue;
       }
       return { error: null };
     } catch (error) {
-      if (error instanceof Error) {
-        lastError = error.message;
-      }
+      lastError = vetBuildClientErrorMessage(error, "Request failed.");
     }
   }
   return { error: lastError };
