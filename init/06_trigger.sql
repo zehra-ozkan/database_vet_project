@@ -81,8 +81,13 @@ CREATE OR REPLACE FUNCTION check_daily_appointment_limit()
 RETURNS TRIGGER AS $$
 DECLARE
     appointment_count INT;
-    max_limit INT := 10; -- Change this to your project's required maximum!
+    max_limit INT;
 BEGIN
+    -- Fetch the specific limit for this veterinarian
+    SELECT maxDailyAppointmentLimit INTO max_limit
+    FROM Veterinarian
+    WHERE veterinarianID = NEW.veterinarianID;
+
     -- Count the number of appointments for this vet on the same calendar day
     SELECT COUNT(*) INTO appointment_count
     FROM Appointment
@@ -90,8 +95,8 @@ BEGIN
       -- We cast TIMESTAMP to DATE to ignore the time and just compare the day
       AND dateTime::DATE = NEW.dateTime::DATE;
 
-    -- If the count is already at or above the limit, block the insertion
-    IF appointment_count >= max_limit THEN
+    -- If the limit is set and the count is already at or above the limit, block the insertion
+    IF max_limit IS NOT NULL AND appointment_count >= max_limit THEN
         RAISE EXCEPTION 'Veterinarian % has reached the maximum daily appointment limit of %.', NEW.veterinarianID, max_limit;
     END IF;
 
