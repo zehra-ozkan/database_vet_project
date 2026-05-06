@@ -1,0 +1,6 @@
+ALTER TABLE Appointment
+ADD COLUMN petID INT;
+
+ALTER TABLE Appointment
+ADD CONSTRAINT fk_appointment_pet
+FOREIGN KEY (petID) REFERENCES Pet(petID) ON DELETE CASCADE;
