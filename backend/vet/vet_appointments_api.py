@@ -1488,6 +1488,7 @@ def vet_finalize_appointment(appointment_id):
                 )
 
             existing_plan_next_due_date = None
+            existing_plan_frequency = None
             doses_completed_before = 0
             inferred_total_dose_count = None
 
@@ -1514,6 +1515,7 @@ def vet_finalize_appointment(appointment_id):
                     """
                     SELECT
                         v.vaccineid,
+                        vr.frequency,
                         COALESCE(m.name, 'Unknown') AS vaccine_name
                     FROM vaccinationrecord vr
                     LEFT JOIN involves i ON i.recordid = vr.recordid
@@ -1526,6 +1528,8 @@ def vet_finalize_appointment(appointment_id):
                     (resolved_plan_id,),
                 )
                 existing_plan_vaccine = cursor.fetchone()
+                if existing_plan_vaccine and existing_plan_vaccine.get("frequency"):
+                    existing_plan_frequency = str(existing_plan_vaccine["frequency"])
                 if (
                     existing_plan_vaccine
                     and existing_plan_vaccine.get("vaccineid") is not None
@@ -1569,6 +1573,9 @@ def vet_finalize_appointment(appointment_id):
                             )
                         }
                     ), 400
+
+            if vaccination_frequency is None and existing_plan_frequency:
+                vaccination_frequency = existing_plan_frequency
 
             effective_total_dose_count = (
                 vaccination_dose_count

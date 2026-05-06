@@ -474,26 +474,26 @@ export default function AppointmentActions({
       return;
     }
 
-    const frequencyDaysResult = parseOptionalPositiveInteger(
-      vaccinationFrequencyDays,
-      "Frequency days"
-    );
+    const frequencyDaysResult =
+      vaccinationPlanMode === "new"
+        ? parseOptionalPositiveInteger(vaccinationFrequencyDays, "Frequency days")
+        : { value: null as number | null, error: null as string | null };
     if (frequencyDaysResult.error) {
       setVaccinationError(frequencyDaysResult.error);
       return;
     }
 
-    const doseCountResult = parseOptionalPositiveInteger(
-      vaccinationDoseCount,
-      "Total doses"
-    );
+    const doseCountResult =
+      vaccinationPlanMode === "new"
+        ? parseOptionalPositiveInteger(vaccinationDoseCount, "Total doses")
+        : { value: null as number | null, error: null as string | null };
     if (doseCountResult.error) {
       setVaccinationError(doseCountResult.error);
       return;
     }
 
-    let normalizedNextDueDate = vaccinationNextDueDate.trim();
-    if (!normalizedNextDueDate && frequencyDaysResult.value) {
+    let normalizedNextDueDate = vaccinationPlanMode === "new" ? vaccinationNextDueDate.trim() : "";
+    if (vaccinationPlanMode === "new" && !normalizedNextDueDate && frequencyDaysResult.value) {
       normalizedNextDueDate =
         deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
     }
@@ -526,8 +526,8 @@ export default function AppointmentActions({
       vaccinationBatchNo: normalizedVaccinationBatchNo,
       vaccinationShotDate,
       vaccinationNextDueDate: normalizedNextDueDate,
-      vaccinationFrequencyDays,
-      vaccinationDoseCount,
+      vaccinationFrequencyDays: vaccinationPlanMode === "new" ? vaccinationFrequencyDays : "",
+      vaccinationDoseCount: vaccinationPlanMode === "new" ? vaccinationDoseCount : "",
     });
     setVaccinationSaving(false);
     setVaccinationMessage("Vaccination draft saved. It will be committed on Complete visit.");
@@ -585,26 +585,27 @@ export default function AppointmentActions({
       setCompletionError("Vaccination batch no is required.");
       return;
     }
-    const frequencyDaysResult = parseOptionalPositiveInteger(
-      vaccinationFrequencyDays,
-      "Frequency days"
-    );
+    const frequencyDaysResult =
+      vaccinationPlanMode === "new"
+        ? parseOptionalPositiveInteger(vaccinationFrequencyDays, "Frequency days")
+        : { value: null as number | null, error: null as string | null };
     if (frequencyDaysResult.error) {
       setCompletionError(frequencyDaysResult.error);
       return;
     }
 
-    const doseCountResult = parseOptionalPositiveInteger(
-      vaccinationDoseCount,
-      "Total doses"
-    );
+    const doseCountResult =
+      vaccinationPlanMode === "new"
+        ? parseOptionalPositiveInteger(vaccinationDoseCount, "Total doses")
+        : { value: null as number | null, error: null as string | null };
     if (doseCountResult.error) {
       setCompletionError(doseCountResult.error);
       return;
     }
 
-    let normalizedVaccinationNextDueDate = vaccinationNextDueDate.trim();
-    if (!normalizedVaccinationNextDueDate && frequencyDaysResult.value) {
+    let normalizedVaccinationNextDueDate =
+      vaccinationPlanMode === "new" ? vaccinationNextDueDate.trim() : "";
+    if (vaccinationPlanMode === "new" && !normalizedVaccinationNextDueDate && frequencyDaysResult.value) {
       normalizedVaccinationNextDueDate =
         deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
     }
@@ -645,8 +646,8 @@ export default function AppointmentActions({
       vaccinationBatchNo: normalizedVaccinationBatchNo,
       vaccinationShotDate,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate,
-      vaccinationFrequencyDays,
-      vaccinationDoseCount,
+      vaccinationFrequencyDays: vaccinationPlanMode === "new" ? vaccinationFrequencyDays : "",
+      vaccinationDoseCount: vaccinationPlanMode === "new" ? vaccinationDoseCount : "",
       refereeVetId,
       referralDiagnosis: normalizedReferralDiagnosis,
       consultationFee,
@@ -670,8 +671,8 @@ export default function AppointmentActions({
       vaccinationBatchNo: normalizedVaccinationBatchNo || null,
       vaccinationShotDate: vaccinationShotDate || null,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate || null,
-      vaccinationFrequencyDays: frequencyDaysResult.value,
-      vaccinationDoseCount: doseCountResult.value,
+      vaccinationFrequencyDays: vaccinationPlanMode === "new" ? frequencyDaysResult.value : null,
+      vaccinationDoseCount: vaccinationPlanMode === "new" ? doseCountResult.value : null,
       refereeVetId: normalizedReferralDiagnosis ? refereeVetId ?? null : null,
       referralDiagnosis: normalizedReferralDiagnosis || null,
       consultationFee: consultationFeeResult.value,
@@ -902,6 +903,10 @@ export default function AppointmentActions({
                 setVaccinationPlanMode(mode);
                 if (mode === "new") {
                   setVaccinationPlanId(null);
+                } else {
+                  setVaccinationNextDueDate("");
+                  setVaccinationFrequencyDays("");
+                  setVaccinationDoseCount("");
                 }
               }}
               disabled={vaccinationSaving}
@@ -928,7 +933,7 @@ export default function AppointmentActions({
                       ? existingVaccinationPlans.find((plan) => plan.planid === parsedValue) ?? null
                       : null;
                   setVaccinationPlanId(selectedPlan ? selectedPlan.planid : null);
-                  if (selectedPlan?.latest_vaccine_id && !vaccinationVaccineId) {
+                  if (selectedPlan?.latest_vaccine_id) {
                     setVaccinationVaccineId(selectedPlan.latest_vaccine_id);
                   }
                 }}
@@ -955,30 +960,32 @@ export default function AppointmentActions({
               </select>
             </div>
           ) : null}
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>Vaccine</label>
-            <select
-              className={styles.inputControl}
-              value={vaccinationVaccineId ?? ""}
-              onChange={(event) => {
-                const rawValue = event.target.value;
-                if (!rawValue) {
-                  setVaccinationVaccineId(null);
-                  return;
-                }
-                const parsedValue = Number.parseInt(rawValue, 10);
-                setVaccinationVaccineId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
-              }}
-              disabled={vaccinationSaving}
-            >
-              <option value="">No vaccine selected</option>
-              {availableVaccines.map((vaccine) => (
-                <option key={vaccine.medicineid} value={vaccine.medicineid}>
-                  {vaccine.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {vaccinationPlanMode === "existing" && selectedExistingVaccinationPlan?.latest_vaccine_id ? null : (
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Vaccine</label>
+              <select
+                className={styles.inputControl}
+                value={vaccinationVaccineId ?? ""}
+                onChange={(event) => {
+                  const rawValue = event.target.value;
+                  if (!rawValue) {
+                    setVaccinationVaccineId(null);
+                    return;
+                  }
+                  const parsedValue = Number.parseInt(rawValue, 10);
+                  setVaccinationVaccineId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
+                }}
+                disabled={vaccinationSaving}
+              >
+                <option value="">No vaccine selected</option>
+                {availableVaccines.map((vaccine) => (
+                  <option key={vaccine.medicineid} value={vaccine.medicineid}>
+                    {vaccine.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {selectedExistingVaccinationPlan ? (
             <div className={styles.formGroup} style={{ minWidth: "100%" }}>
               <p className={styles.tileSub}>
@@ -988,6 +995,9 @@ export default function AppointmentActions({
                 {selectedExistingVaccinationPlan.nextvaccinationdate
                   ? new Date(selectedExistingVaccinationPlan.nextvaccinationdate).toLocaleDateString("tr-TR")
                   : "completed"}
+              </p>
+              <p className={styles.tileSub}>
+                Completing this visit will automatically increase used dose count by 1.
               </p>
             </div>
           ) : null}
@@ -1012,40 +1022,44 @@ export default function AppointmentActions({
               disabled={vaccinationSaving}
             />
           </div>
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>Next due date</label>
-            <input
-              type="date"
-              className={styles.inputControl}
-              value={vaccinationNextDueDate}
-              onChange={(event) => setVaccinationNextDueDate(event.target.value)}
-              disabled={vaccinationSaving}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>Frequency (days)</label>
-            <input
-              type="number"
-              min={1}
-              className={styles.inputControl}
-              value={vaccinationFrequencyDays}
-              onChange={(event) => setVaccinationFrequencyDays(event.target.value)}
-              placeholder="e.g. 30"
-              disabled={vaccinationSaving}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>Total doses (optional)</label>
-            <input
-              type="number"
-              min={1}
-              className={styles.inputControl}
-              value={vaccinationDoseCount}
-              onChange={(event) => setVaccinationDoseCount(event.target.value)}
-              placeholder="e.g. 3"
-              disabled={vaccinationSaving}
-            />
-          </div>
+          {vaccinationPlanMode === "new" ? (
+            <>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Next due date</label>
+                <input
+                  type="date"
+                  className={styles.inputControl}
+                  value={vaccinationNextDueDate}
+                  onChange={(event) => setVaccinationNextDueDate(event.target.value)}
+                  disabled={vaccinationSaving}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Frequency (days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  className={styles.inputControl}
+                  value={vaccinationFrequencyDays}
+                  onChange={(event) => setVaccinationFrequencyDays(event.target.value)}
+                  placeholder="e.g. 30"
+                  disabled={vaccinationSaving}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Total doses (optional)</label>
+                <input
+                  type="number"
+                  min={1}
+                  className={styles.inputControl}
+                  value={vaccinationDoseCount}
+                  onChange={(event) => setVaccinationDoseCount(event.target.value)}
+                  placeholder="e.g. 3"
+                  disabled={vaccinationSaving}
+                />
+              </div>
+            </>
+          ) : null}
           <button
             type="submit"
             className={styles.btn}
