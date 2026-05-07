@@ -376,16 +376,21 @@ export default function PetProfilePage() {
                         </td>
                       </tr>
                     ) : (
-                      activity.map((row, index) => (
-                        <tr key={`${row.appointmentid}-${index}`}>
-                          <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{formatDate(row.datetime)}</td>
-                          <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{row.atype ?? "Not set"}</td>
-                          <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{row.branchname ?? "No clinic visits yet"}</td>
-                          <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>
-                            <span className="muted">{row.status ?? "Not set"}</span>
-                          </td>
-                        </tr>
-                      ))
+                      activity.map((row, index) => {
+                        const upcoming = row.datetime ? new Date(row.datetime) > new Date() : false;
+                        return (
+                          <tr key={`${row.appointmentid}-${index}`}>
+                            <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{formatDate(row.datetime)}</td>
+                            <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{row.atype ?? "Not set"}</td>
+                            <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>{row.branchname ?? "No clinic visits yet"}</td>
+                            <td style={{ padding: "12px 8px", borderBottom: "1px solid rgba(15, 23, 42, 0.08)" }}>
+                              <span className={`pill ${upcoming ? "wait" : "ok"}`}>
+                                {upcoming ? "Upcoming" : "Completed"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

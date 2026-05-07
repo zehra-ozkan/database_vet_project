@@ -10,6 +10,7 @@ type PetRow = {
   species: string | null;
   breed: string | null;
   age: number | null;
+  sex: string | null;
   allergies: string | null;
   chipid: number | null;
 };
@@ -19,6 +20,7 @@ type PetFormState = {
   species: string;
   breed: string;
   age: string;
+  sex: string;
   allergies: string;
 };
 
@@ -27,6 +29,7 @@ const emptyPetForm: PetFormState = {
   species: "",
   breed: "",
   age: "",
+  sex: "F",
   allergies: "",
 };
 
@@ -80,6 +83,7 @@ export default function PetOwnerMyPetsPage() {
       species: pet.species ?? "",
       breed: pet.breed ?? "",
       age: pet.age === null || pet.age === undefined ? "" : String(pet.age),
+      sex: pet.sex ?? "F",
       allergies: pet.allergies ?? "",
     });
   };
@@ -97,6 +101,7 @@ export default function PetOwnerMyPetsPage() {
         species: form.species,
         breed: form.breed,
         age: Number(form.age),
+        sex: form.sex,
         allergies: form.allergies || null,
       });
       setForm(emptyPetForm);
@@ -121,6 +126,7 @@ export default function PetOwnerMyPetsPage() {
         species: editForm.species,
         breed: editForm.breed,
         age: Number(editForm.age),
+        sex: editForm.sex,
         isAlive: true,
         allergies: editForm.allergies || null,
       });
@@ -170,7 +176,7 @@ export default function PetOwnerMyPetsPage() {
                 <div>
                   <h2 style={{ fontSize: "18px", fontWeight: 800, margin: 0 }}>{pet.name}</h2>
                   <p className="muted" style={{ margin: "5px 0", fontSize: "13px" }}>
-                    {pet.species || "No data"} · {pet.breed || "No data"} · {pet.age ?? "No data"} years
+                    {pet.species || "No data"} · {pet.breed || "No data"} · {pet.age ?? "No data"} years · {pet.sex === "M" ? "Male" : pet.sex === "F" ? "Female" : "No data"}
                   </p>
                   <p className="muted" style={{ margin: "5px 0", fontSize: "13px" }}>
                     Allergies: {pet.allergies ?? "No data"}
@@ -212,6 +218,13 @@ export default function PetOwnerMyPetsPage() {
                       <div className="form-group">
                         <label>Age</label>
                         <input type="number" min="0" value={editForm.age} onChange={(event) => setEditForm((prev) => ({ ...prev, age: event.target.value }))} required />
+                      </div>
+                      <div className="form-group">
+                        <label>Sex</label>
+                        <select value={editForm.sex} onChange={(event) => setEditForm((prev) => ({ ...prev, sex: event.target.value }))} required>
+                          <option value="F">Female</option>
+                          <option value="M">Male</option>
+                        </select>
                       </div>
                     </div>
                     <div className="form-group">
@@ -255,6 +268,13 @@ export default function PetOwnerMyPetsPage() {
                 <div className="form-group">
                   <label>Age</label>
                   <input type="number" min="0" value={form.age} onChange={(event) => setForm((prev) => ({ ...prev, age: event.target.value }))} required />
+                </div>
+                <div className="form-group">
+                  <label>Sex</label>
+                  <select value={form.sex} onChange={(event) => setForm((prev) => ({ ...prev, sex: event.target.value }))} required>
+                    <option value="F">Female</option>
+                    <option value="M">Male</option>
+                  </select>
                 </div>
               </div>
               <div className="form-group">

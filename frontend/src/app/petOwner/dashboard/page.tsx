@@ -521,19 +521,22 @@ export default function PetOwnerDashboardPage() {
                       </td>
                     </tr>
                   ) : (
-                    activity.map((row, i) => (
-                      <tr key={i}>
-                        <td>{formatDate(row.activitydate)}</td>
-                        <td>{row.detail}</td>
-                        <td>{row.branchname ?? "—"}</td>
-                        <td>
-                          <span className={`pill ${row.activitytype === "Bill" ? "info" : "ok"}`}>
-                            {row.activitytype === "Bill" ? "Bill" : "Completed"}
-                          </span>
-                        </td>
-                        <td>—</td>
-                      </tr>
-                    ))
+                    activity.map((row, i) => {
+                      const upcoming = row.activitytype !== "Bill" && new Date(row.activitydate) > new Date();
+                      const pillClass = row.activitytype === "Bill" ? "info" : upcoming ? "wait" : "ok";
+                      const pillLabel = row.activitytype === "Bill" ? "Bill" : upcoming ? "Upcoming" : "Completed";
+                      return (
+                        <tr key={i}>
+                          <td>{formatDate(row.activitydate)}</td>
+                          <td>{row.detail}</td>
+                          <td>{row.branchname ?? "—"}</td>
+                          <td>
+                            <span className={`pill ${pillClass}`}>{pillLabel}</span>
+                          </td>
+                          <td>—</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

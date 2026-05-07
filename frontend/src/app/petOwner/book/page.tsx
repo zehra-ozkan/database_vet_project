@@ -63,8 +63,10 @@ function BookPageInner() {
   // ── Data state ──────────────────────────────────────────────────────────────
   const [branches, setBranches] = useState<BranchRow[]>([]);               // full list, never changes
   const [allVets, setAllVets] = useState<VetRow[]>([]);                    // full list, used by booking form
+  const [dateFilteredVets, setDateFilteredVets] = useState<VetRow[] | null>(null); // vets available on selected date (null = no date filter)
   const [pets, setPets] = useState<PetRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingDate, setLoadingDate] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -137,9 +139,32 @@ function BookPageInner() {
       .finally(() => setLoading(false));
   }, [ownerId]);
 
+  // ── Fetch available vets when date filter changes ──────────────────────────
+  // The backend excludes vets whose daily appointment limit is reached on that date.
+  useEffect(() => {
+    if (!filterDate) {
+      setDateFilteredVets(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingDate(true);
+    apiGet<VetRow[]>("/petOwner/book/vets", { date: filterDate })
+      .then((data) => {
+        if (!cancelled) setDateFilteredVets(data);
+      })
+      .catch(() => {
+        if (!cancelled) setDateFilteredVets(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDate(false);
+      });
+    return () => { cancelled = true; };
+  }, [filterDate]);
+
   // ── Filtered vets (reactive — recalculates whenever a filter changes) ──────
   const filteredVets = useMemo(() => {
-    let result = [...allVets];
+    // Start from date-filtered list if a date is selected, otherwise full list
+    let result = dateFilteredVets !== null ? [...dateFilteredVets] : [...allVets];
 
     if (filterBranchId) {
       const branch = branches.find((b) => String(b.branchid) === filterBranchId);
@@ -164,12 +189,8 @@ function BookPageInner() {
       );
     }
 
-    if (filterDate) {
-      result = result.filter((v) => v.availabledates?.includes(filterDate));
-    }
-
     return result;
-  }, [allVets, branches, filterBranchId, filterSpecialization, filterSpecies, filterDate]);
+  }, [allVets, dateFilteredVets, branches, filterBranchId, filterSpecialization, filterSpecies]);
 
   // ── Filtered branches (reactive — recalculates whenever a filter changes) ──
   const displayedBranches = useMemo(() => {
@@ -185,7 +206,7 @@ function BookPageInner() {
       );
     }
 
-    // When species or date filters are active, only show branches that still have matching vets
+    // When species or date filters are active, narrow to branches that have available vets
     if (filterSpecies || filterDate) {
       const branchNamesWithVets = new Set(filteredVets.map((v) => v.branchname).filter(Boolean));
       shown = shown.filter((b) => branchNamesWithVets.has(b.name));
@@ -344,10 +365,16 @@ function BookPageInner() {
                 setFilterSpecialization("");
                 setFilterSpecies("");
                 setFilterDate("");
+                setDateFilteredVets(null);
               }}
             >
               Reset
             </button>
+            {loadingDate && (
+              <span className="muted" style={{ fontSize: "12px", marginLeft: "8px" }}>
+                Checking availability…
+              </span>
+            )}
           </div>
 
           {/* Branches card */}
