@@ -20,32 +20,34 @@ export default function Sidebar() {
   };
 
   return (
-    <header className="sticky top-0 z-10 border-b border-white/60 bg-white/45 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
-        <Link href="/manager/dashboard" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-lg font-black text-teal-700 shadow-sm shadow-slate-200/70">
-          V
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-4 py-4 pb-6">
+        <Link href="/manager/dashboard" className="flex items-center rounded-2xl border border-[rgba(15,23,42,0.12)] bg-white/85 p-2 transition hover:opacity-85" aria-label="VetChain home">
+          <span className="block h-[38px] w-[38px] rounded-2xl bg-[linear-gradient(135deg,rgba(109,40,217,0.95),rgba(5,150,105,0.55))] shadow-[0_12px_30px_rgba(109,40,217,0.16)]" />
         </Link>
 
-        <nav className="flex flex-wrap items-center justify-end gap-2">
-        {navItems.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${
-                active ? "bg-slate-800 text-white shadow-sm" : "bg-white/70 text-slate-600 shadow-sm hover:bg-white hover:text-slate-900"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-          <button onClick={handleLogout} className="rounded-2xl bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 shadow-sm transition hover:bg-rose-100">
+        <nav className="flex flex-wrap items-center justify-end gap-2.5">
+          {navItems.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`rounded-[14px] border px-3.5 py-2.5 text-sm text-[#0f172a] transition ${
+                  active
+                    ? "border-[rgba(109,40,217,0.30)] bg-[rgba(109,40,217,0.10)]"
+                    : "border-[rgba(15,23,42,0.12)] bg-white/75 hover:bg-white"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+          <button onClick={handleLogout} className="rounded-[14px] border border-[rgba(15,23,42,0.12)] bg-white/75 px-3.5 py-2.5 text-sm text-[#0f172a] transition hover:bg-white">
             Logout
           </button>
         </nav>
       </div>
-    </header>
+    </div>
   );
 }

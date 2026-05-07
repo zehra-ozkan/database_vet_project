@@ -32,7 +32,7 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
 
   if (authState === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-violet-100 via-emerald-50 to-sky-100">
+      <div className="pet-owner flex min-h-screen items-center justify-center">
         <div className="rounded-3xl bg-white/85 px-8 py-6 text-sm font-semibold text-slate-500 shadow-sm">Checking manager access...</div>
       </div>
     );
@@ -41,9 +41,11 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
   if (authState === "denied") return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-100 via-emerald-50 to-sky-100 text-slate-800">
-      <Sidebar />
-      <main className="mx-auto min-h-screen max-w-7xl px-4 pb-10 pt-6 md:px-8">{children}</main>
+    <div className="pet-owner">
+      <div className="container">
+        <Sidebar />
+        <main>{children}</main>
+      </div>
     </div>
   );
 }
