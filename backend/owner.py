@@ -357,9 +357,11 @@ def owner_pet_detail(pet_id: int):
     )
     last_visit = fetch_one(
         """
-        SELECT vs.notes, a.dateTime
-        FROM VisitSummary vs
-        JOIN Appointment a ON a.appointmentID = vs.appointmentID
+        SELECT
+            a.dateTime,
+            vs.notes
+        FROM Appointment a
+        LEFT JOIN VisitSummary vs ON vs.appointmentID = a.appointmentID
         WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         LIMIT 1
@@ -459,12 +461,19 @@ def owner_pet_activity(pet_id: int):
     rows = fetch_all(
         """
         SELECT
+            a.appointmentID,
             a.dateTime,
             a.aType,
-            b.name AS branchName
+            b.name AS branchName,
+            CASE
+                WHEN a.dateTime < CURRENT_TIMESTAMP THEN 'Completed'
+                ELSE 'Scheduled'
+            END AS status,
+            vs.notes
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
-        LEFT JOIN Branch b ON b.branchID = v.branchID
+        JOIN Branch b ON b.branchID = v.branchID
+        LEFT JOIN VisitSummary vs ON vs.appointmentID = a.appointmentID
         WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         """,
@@ -927,13 +936,23 @@ def get_pet_activity(pet_id: int):
 
     rows = fetch_all(
         """
-        SELECT a.appointmentID, a.dateTime, a.aType
+        SELECT
+            a.appointmentID,
+            a.dateTime,
+            a.aType AS type,
+            a.aType,
+            b.name AS branchName,
+            CASE
+                WHEN a.dateTime < CURRENT_TIMESTAMP THEN 'Completed'
+                ELSE 'Scheduled'
+            END AS status
         FROM Appointment a
-        WHERE a.petOwnerID = %s
-          AND a.petID = %s
+        JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
+        JOIN Branch b ON b.branchID = v.branchID
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC;
         """,
-        (owner_id, pet_id),
+        (pet_id,),
     )
     return jsonify(rows)
 

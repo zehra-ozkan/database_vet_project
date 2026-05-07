@@ -64,6 +64,35 @@ export interface SupplyLog {
   notes: string;
 }
 
+export interface StockConsumptionReportRow {
+  medicineid: number;
+  medicinename: string;
+  branch: string;
+  prescribedcount: number;
+}
+
+export interface WasteStatisticsReportRow {
+  medicineid: number;
+  medicinename: string;
+  branch: string;
+  wastelogcount: number;
+  expiredsupplyrejected: number;
+}
+
+export interface RestockFrequencyReportRow {
+  medicineid: number;
+  medicinename: string;
+  branch: string;
+  successfulstockincreases: number;
+  currentquantity: number;
+}
+
+export interface CostBreakdownReportRow {
+  branchid: number;
+  branch: string;
+  estimatedinventoryunits: number;
+}
+
 export interface VaccinationSummary {
   overdue: number;
   duewithin30days: number;
@@ -84,6 +113,28 @@ export interface VaccinationRow {
   status: StatusTone;
   recommendedvet: string;
   branch: string;
+}
+
+export interface VaccinationComplianceReportRow {
+  species: string;
+  breed: string;
+  totalpets: number;
+  compliantpets: number;
+  compliancerate: number;
+}
+
+export interface MostAdministeredVaccineReportRow {
+  vaccineid: number;
+  vaccinename: string;
+  administrationcount: number;
+}
+
+export interface VaccinationOverdueRateReportRow {
+  branchid: number;
+  branch: string;
+  totalplans: number;
+  overdueplans: number;
+  overduerate: number;
 }
 
 export interface BillingSummary {

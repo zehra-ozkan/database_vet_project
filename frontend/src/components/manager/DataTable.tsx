@@ -9,13 +9,14 @@ type DataTableProps<T> = {
   columns: Array<DataTableColumn<T>>;
   rows: T[];
   emptyMessage?: string;
+  tableClassName?: string;
 };
 
-export default function DataTable<T>({ columns, rows, emptyMessage = "No records found." }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, rows, emptyMessage = "No records found.", tableClassName = "min-w-[760px]" }: DataTableProps<T>) {
   return (
     <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm shadow-slate-200/70">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left">
+        <table className={`w-full border-collapse text-left ${tableClassName}`}>
           <thead className="bg-slate-50/80 text-xs uppercase tracking-[0.18em] text-slate-400">
             <tr>
               {columns.map((column) => (
