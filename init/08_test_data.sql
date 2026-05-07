@@ -77,10 +77,10 @@ INSERT INTO VaccinationRecord (recordID, threshold, shotDate, frequency, nextDue
 INSERT INTO Involves (recordID, vaccineID) VALUES
 (1, 2);
 
-INSERT INTO Appointment (appointmentID, aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID) VALUES
-(1, 'CHECKUP', '2026-04-20 09:00:00', NULL, 1, 3),
-(2, 'VACCINATION', '2026-04-20 10:00:00', 1, 1, 3),
-(3, 'COMPLAINT', '2026-04-21 11:30:00', NULL, 2, 4);
+INSERT INTO Appointment (appointmentID, aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID) VALUES
+(1, 'CHECKUP', '2026-04-20 09:00:00', NULL, 1, 3, 1),
+(2, 'VACCINATION', '2026-04-20 10:00:00', 1, 1, 3, 1),
+(3, 'COMPLAINT', '2026-04-21 11:30:00', NULL, 2, 4, 3);
 
 -- =========================================================================
 -- 6. POST-APPOINTMENT (Bills, Summaries, Prescriptions, Ratings)

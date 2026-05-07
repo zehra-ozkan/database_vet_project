@@ -39,6 +39,24 @@ AFTER INSERT ON Prescribes
 FOR EACH ROW
 EXECUTE FUNCTION deduct_stock_after_prescribes();
 
+-- 2b. Deduct Vaccine Stock After Involves
+
+CREATE OR REPLACE FUNCTION deduct_stock_after_involves()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE Medicine
+    SET quantity = quantity - 1
+    WHERE medicineID = NEW.vaccineID;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_deduct_stock_after_involves
+AFTER INSERT ON Involves
+FOR EACH ROW
+EXECUTE FUNCTION deduct_stock_after_involves();
+
 
 -- 3. Synchronize Lost/Found Report
 
@@ -54,7 +72,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_update_chip_status_after_report
-AFTER INSERT ON LostFoundReport
+AFTER INSERT OR UPDATE OF isFound ON LostFoundReport
 FOR EACH ROW
 EXECUTE FUNCTION update_chip_status_after_report();
 

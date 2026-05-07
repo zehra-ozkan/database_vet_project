@@ -21,6 +21,14 @@ CREATE TABLE LostFoundReport (
     isFound BOOLEAN DEFAULT TRUE,
     petID INT NOT NULL,
     createdDate DATE NOT NULL,
+    foundByVetID INT,
+    targetVetID INT,
+    foundNote TEXT,
+    foundAt TIMESTAMP,
+    vetReadAt TIMESTAMP,
+    ownerReadAt TIMESTAMP,
+    FOREIGN KEY (foundByVetID) REFERENCES Veterinarian(veterinarianID) ON DELETE SET NULL,
+    FOREIGN KEY (targetVetID) REFERENCES Veterinarian(veterinarianID) ON DELETE SET NULL,
     FOREIGN KEY (petID) REFERENCES Pet(petID) ON DELETE CASCADE
 );
 

@@ -47,6 +47,19 @@ type VetAppointmentMedicineOption = {
   name: string;
   quantity: number | null;
   status: string | null;
+  category?: string | null;
+};
+
+type VetExistingVaccinationPlan = {
+  planid: number;
+  nextvaccinationdate: string | null;
+  veterinarianid: number | null;
+  veterinarian_name: string | null;
+  applied_dose_count: number;
+  total_dose_count: number | null;
+  last_shot_date: string | null;
+  latest_vaccine_id: number | null;
+  latest_vaccine_name: string | null;
 };
 
 type VetAppointmentReferralTarget = {
@@ -90,6 +103,7 @@ type VetAppointmentDetailResponse = {
   medical_history: VetAppointmentMedicalHistoryItem[];
   prescription_history: VetAppointmentPrescriptionHistoryItem[];
   vaccination_history: VetAppointmentVaccinationHistoryItem[];
+  existing_vaccination_plans: VetExistingVaccinationPlan[];
   latest_visit_summary: {
     visitid: string;
     appointmentid: number;
@@ -243,13 +257,17 @@ export default async function AppointmentDetailPage({
 
         <section className={styles.card}>
           <div className={styles.eventHeader}>
-            <h1 className={styles.pageTitle}>Appointment Detail · Visit Record</h1>
+            <h1 className={styles.pageTitle}>
+              {data.is_completed ? "Appointment Detail" : "Appointment Detail · Visit Record"}
+            </h1>
             <Link href="/vet/appointments" className={`${styles.btn} ${styles.ghost}`}>
               Back to appointments
             </Link>
           </div>
           <p className={styles.pageSubtitle}>
-            Appointment #{data.appointment.appointmentid} · Use this page to save visit summary, prescriptions, referrals, and billing.
+            {data.is_completed
+              ? `Appointment #${data.appointment.appointmentid} · This appointment is completed.`
+              : `Appointment #${data.appointment.appointmentid} · Use this page to save visit summary, prescriptions, referrals, and billing.`}
           </p>
           <div className={`${styles.tileStack} ${styles.mt2}`}>
             <div className={styles.tile}>
@@ -465,17 +483,20 @@ export default async function AppointmentDetailPage({
           </div>
         </section>
 
-        <AppointmentActions
-          key={`actions-${appointmentId}-${data.selected_pet_id ?? 0}-${data.latest_visit_summary?.visitid ?? "none"}-${data.is_completed ? "done" : "open"}`}
-          appointmentId={appointmentId}
-          vetId={selectedVetId}
-          selectedPetId={data.selected_pet_id}
-          defaultVisitNotes={latestVisitNotes}
-          defaultAppointmentDateTime={defaultAppointmentDateTime}
-          isCompleted={data.is_completed}
-          medicines={data.available_medicines}
-          referralTargets={data.referral_targets}
-        />
+        {!data.is_completed ? (
+          <AppointmentActions
+            key={`actions-${appointmentId}-${data.selected_pet_id ?? 0}-${data.latest_visit_summary?.visitid ?? "none"}-${data.is_completed ? "done" : "open"}`}
+            appointmentId={appointmentId}
+            vetId={selectedVetId}
+            selectedPetId={data.selected_pet_id}
+            defaultVisitNotes={latestVisitNotes}
+            defaultAppointmentDateTime={defaultAppointmentDateTime}
+            isCompleted={data.is_completed}
+            medicines={data.available_medicines}
+            existingVaccinationPlans={data.existing_vaccination_plans}
+            referralTargets={data.referral_targets}
+          />
+        ) : null}
 
         <section className={styles.card}>
           <div className={`${styles.eventActionRow} ${styles.mt1}`}>

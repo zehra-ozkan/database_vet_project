@@ -83,6 +83,39 @@ def owner_route(path: str, **options):
     return decorator
 
 
+def _owner_get_microchip_found_news(owner_id: int):
+    rows = fetch_all(
+        """
+        SELECT
+            lfr.reportid AS news_id,
+            COALESCE(lfr.foundat, lfr.createddate::timestamp) AS created_at,
+            c.chipid AS chip_id,
+            p.petid AS pet_id,
+            p.name AS pet_name,
+            p.ownerid AS owner_id,
+            uo.name AS owner_name,
+            lfr.foundbyvetid AS source_vet_id,
+            COALESCE(uv.name, 'Unknown') AS source_vet_name,
+            COALESCE(b.name, 'Unassigned') AS source_branch_name,
+            COALESCE(lfr.foundnote, '') AS notes,
+            (lfr.ownerreadat IS NULL) AS is_unread_owner
+        FROM lostfoundreport lfr
+        JOIN pet p ON p.petid = lfr.petid
+        LEFT JOIN chip c ON c.petid = p.petid
+        JOIN users uo ON uo.userid = p.ownerid
+        LEFT JOIN users uv ON uv.userid = lfr.foundbyvetid
+        LEFT JOIN veterinarian vv ON vv.veterinarianid = lfr.foundbyvetid
+        LEFT JOIN branch b ON b.branchid = vv.branchid
+        WHERE p.ownerid = %s
+          AND COALESCE(lfr.isfound, FALSE) = TRUE
+          AND lfr.foundbyvetid IS NOT NULL
+        ORDER BY COALESCE(lfr.foundat, lfr.createddate::timestamp) DESC, lfr.reportid DESC
+        """,
+        (owner_id,),
+    )
+    return rows
+
+
 # Load all pets of the current owner
 @owner_route("/pets", methods=["GET"])
 def owner_pets():
@@ -314,10 +347,9 @@ def owner_pet_detail(pet_id: int):
         """
         SELECT b.name AS branchName
         FROM Appointment a
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         JOIN Branch b ON b.branchID = v.branchID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         LIMIT 1
         """,
@@ -328,8 +360,7 @@ def owner_pet_detail(pet_id: int):
         SELECT vs.notes, a.dateTime
         FROM VisitSummary vs
         JOIN Appointment a ON a.appointmentID = vs.appointmentID
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         LIMIT 1
         """,
@@ -346,17 +377,73 @@ def owner_pet_vaccinations(pet_id: int):
 
     rows = fetch_all(
         """
+        WITH scoped_plans AS (
+            SELECT
+                vp.planID,
+                vp.nextVaccinationDate
+            FROM VaccinationPlan vp
+            JOIN Pet p ON p.petID = vp.petID
+            WHERE vp.petID = %s
+              AND p.ownerID = %s
+        ),
+        plan_totals AS (
+            SELECT
+                sp.planID,
+                sp.nextVaccinationDate,
+                COUNT(vr.recordID)::int AS completedDoses,
+                MAX(vr.threshold) FILTER (
+                    WHERE vr.threshold IS NOT NULL
+                      AND vr.threshold > 0
+                )::int AS totalDoses
+            FROM scoped_plans sp
+            LEFT JOIN VaccinationRecord vr ON vr.planID = sp.planID
+            GROUP BY sp.planID, sp.nextVaccinationDate
+        ),
+        last_plan_record AS (
+            SELECT DISTINCT ON (vr.planID)
+                vr.planID,
+                vr.recordID,
+                vr.nextDueDate,
+                COALESCE(m.name, 'No data') AS vaccineName
+            FROM VaccinationRecord vr
+            LEFT JOIN Involves i ON i.recordID = vr.recordID
+            LEFT JOIN Vaccine v ON v.vaccineID = i.vaccineID
+            LEFT JOIN Medicine m ON m.medicineID = v.vaccineID
+            WHERE vr.planID IN (SELECT planID FROM scoped_plans)
+            ORDER BY vr.planID, vr.shotDate DESC NULLS LAST, vr.recordID DESC
+        )
         SELECT
-            vr.recordID,
-            vr.nextDueDate,
-            m.name AS vaccineName
-        FROM VaccinationRecord vr
-        JOIN Pet p ON p.petID = vr.petID
-        JOIN Involves i ON i.recordID = vr.recordID
-        JOIN Vaccine v ON v.vaccineID = i.vaccineID
-        JOIN Medicine m ON m.medicineID = v.vaccineID
-        WHERE vr.petID = %s AND p.ownerID = %s
-        ORDER BY vr.nextDueDate ASC
+            COALESCE(lpr.recordID, pt.planID) AS recordID,
+            COALESCE(lpr.vaccineName, 'No data') AS vaccineName,
+            COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) AS nextDueDate,
+            pt.planID,
+            COALESCE(pt.completedDoses, 0) AS completedDoses,
+            pt.totalDoses,
+            CASE
+                WHEN pt.totalDoses IS NOT NULL
+                     AND COALESCE(pt.completedDoses, 0) >= pt.totalDoses
+                    THEN 'Completed'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) IS NULL
+                    THEN 'No data'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) < CURRENT_DATE
+                    THEN 'Overdue'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) <= CURRENT_DATE + INTERVAL '7 days'
+                    THEN 'Due this week'
+                WHEN COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) <= CURRENT_DATE + INTERVAL '30 days'
+                    THEN 'Due'
+                ELSE 'Up to date'
+            END AS planStatus
+        FROM plan_totals pt
+        LEFT JOIN last_plan_record lpr ON lpr.planID = pt.planID
+        ORDER BY
+            CASE
+                WHEN pt.totalDoses IS NOT NULL
+                     AND COALESCE(pt.completedDoses, 0) >= pt.totalDoses
+                    THEN 2
+                ELSE 1
+            END,
+            COALESCE(pt.nextVaccinationDate, lpr.nextDueDate) ASC NULLS LAST,
+            pt.planID ASC
         """,
         (pet_id, owner_id),
     )
@@ -378,8 +465,7 @@ def owner_pet_activity(pet_id: int):
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         LEFT JOIN Branch b ON b.branchID = v.branchID
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         """,
         (pet_id,),
@@ -625,11 +711,11 @@ def owner_create_appointment():
 
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES ('VACCINATION', %s, %s, %s, %s)
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES ('VACCINATION', %s, %s, %s, %s, %s)
             RETURNING appointmentID
             """,
-            (data["dateTime"], plan_id, data["veterinarianID"], owner_id),
+            (data["dateTime"], plan_id, data["veterinarianID"], owner_id, data["petID"]),
         )
         row = cur.fetchone()
         conn.commit()
@@ -738,8 +824,35 @@ def create_vaccination_appointment():
     try:
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES ('VACCINATION', %s, %s, %s, %s)
+            SELECT vp.petID
+            FROM VaccinationPlan vp
+            JOIN Pet p ON p.petID = vp.petID
+            WHERE vp.planID = %s
+              AND p.ownerID = %s
+            """,
+            (data["vaccinationPlanId"], data["petOwnerId"]),
+        )
+        plan_row = cur.fetchone()
+        if plan_row is None:
+            conn.rollback()
+            return jsonify({"error": "Vaccination plan not found for this owner"}), 404
+
+        resolved_pet_id = int(plan_row["petid"])
+        requested_pet_id = data.get("petId")
+        if requested_pet_id is not None:
+            try:
+                parsed_requested_pet_id = int(requested_pet_id)
+            except (TypeError, ValueError):
+                conn.rollback()
+                return jsonify({"error": "petId must be a valid integer"}), 400
+            if parsed_requested_pet_id != resolved_pet_id:
+                conn.rollback()
+                return jsonify({"error": "Selected pet does not match vaccination plan"}), 409
+
+        cur.execute(
+            """
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES ('VACCINATION', %s, %s, %s, %s, %s)
             RETURNING appointmentID;
             """,
             (
@@ -747,6 +860,7 @@ def create_vaccination_appointment():
                 data["vaccinationPlanId"],
                 data["veterinarianId"],
                 data["petOwnerId"],
+                resolved_pet_id,
             ),
         )
         row = cur.fetchone()
@@ -816,9 +930,10 @@ def get_pet_activity(pet_id: int):
         SELECT a.appointmentID, a.dateTime, a.aType
         FROM Appointment a
         WHERE a.petOwnerID = %s
+          AND a.petID = %s
         ORDER BY a.dateTime DESC;
         """,
-        (owner_id,),
+        (owner_id, pet_id),
     )
     return jsonify(rows)
 
@@ -874,10 +989,23 @@ def dashboard_welcome():
         (owner_id,),
     )
 
+    due_soon_vaccinations = fetch_one(
+        """
+        SELECT COUNT(*) AS dueSoonVaccinationCount
+        FROM VaccinationPlan vp
+        JOIN Pet p ON p.petID = vp.petID
+        WHERE p.ownerID = %s
+          AND vp.nextVaccinationDate IS NOT NULL
+          AND vp.nextVaccinationDate BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days';
+        """,
+        (owner_id,),
+    )
+
     return jsonify({
         "user": user_info,
         "upcomingCount": int(upcoming["upcomingappointmentcount"]) if upcoming else 0,
         "outstandingAmount": float(outstanding["outstandingamount"]) if outstanding and outstanding["outstandingamount"] is not None else 0,
+        "dueSoonVaccinationCount": int(due_soon_vaccinations["duesoonvaccinationcount"]) if due_soon_vaccinations else 0,
     })
 
 
@@ -899,7 +1027,77 @@ def dashboard_chip_status():
         """,
         (owner_id,),
     )
+    owner_news = _owner_get_microchip_found_news(owner_id)
+    latest_news_by_chip = {}
+    for news_item in owner_news:
+        chip_id = int(news_item.get("chip_id") or 0)
+        if chip_id <= 0:
+            continue
+        if chip_id in latest_news_by_chip:
+            continue
+        latest_news_by_chip[chip_id] = news_item
+
+    for row in rows:
+        chip_id = int(row.get("chipid") or 0)
+        latest_news = latest_news_by_chip.get(chip_id)
+        row["has_found_vet_info"] = bool(latest_news)
+        row["found_vet_name"] = latest_news.get("source_vet_name") if latest_news else None
+        row["found_vet_branch_name"] = latest_news.get("source_branch_name") if latest_news else None
+        row["found_at"] = latest_news.get("created_at") if latest_news else None
+        row["found_notes"] = latest_news.get("notes") if latest_news else None
+        row["has_unread_found_news"] = bool(latest_news and latest_news.get("is_unread_owner"))
+
     return jsonify(rows)
+
+
+@owner_route("/dashboard/microchip-found-news", methods=["GET"])
+def dashboard_microchip_found_news():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    news_items = _owner_get_microchip_found_news(owner_id)
+    unread_count = sum(1 for item in news_items if bool(item.get("is_unread_owner")))
+
+    return jsonify(
+        {
+            "unread_count": unread_count,
+            "items": news_items,
+        }
+    )
+
+
+@owner_route("/dashboard/microchip-found-news/mark-read", methods=["POST"])
+def dashboard_microchip_found_news_mark_read():
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            UPDATE lostfoundreport lfr
+            SET ownerreadat = NOW()
+            FROM pet p
+            WHERE p.petid = lfr.petid
+              AND p.ownerid = %s
+              AND COALESCE(lfr.isfound, FALSE) = TRUE
+              AND lfr.foundbyvetid IS NOT NULL
+              AND lfr.ownerreadat IS NULL
+            """,
+            (owner_id,),
+        )
+        marked_count = int(cur.rowcount)
+        conn.commit()
+        return jsonify({"marked_read_count": marked_count})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 
 # Upcoming visits list
@@ -1095,11 +1293,12 @@ def book_create():
     data = request.get_json() or {}
     vet_id = data.get("vetId")
     appt_datetime = data.get("dateTime")
+    pet_id = data.get("petId")
     atype = data.get("aType", "CHECKUP")
     vaccination_plan_id = data.get("vaccinationPlanId")
 
-    if not vet_id or not appt_datetime:
-        return jsonify({"error": "vetId and dateTime are required"}), 400
+    if not vet_id or not appt_datetime or not pet_id:
+        return jsonify({"error": "vetId, dateTime and petId are required"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1132,14 +1331,39 @@ def book_create():
             if int(limit_row["booked"]) >= int(limit_row["maxdailyappointmentlimit"]):
                 return jsonify({"error": "This veterinarian has reached their daily appointment limit."}), 409
 
+        cur.execute(
+            """
+            SELECT petID
+            FROM Pet
+            WHERE petID = %s
+              AND ownerID = %s
+            """,
+            (pet_id, owner_id),
+        )
+        if cur.fetchone() is None:
+            return jsonify({"error": "Selected pet was not found for this owner."}), 404
+
+        if vaccination_plan_id is not None:
+            cur.execute(
+                """
+                SELECT planID
+                FROM VaccinationPlan
+                WHERE planID = %s
+                  AND petID = %s
+                """,
+                (vaccination_plan_id, pet_id),
+            )
+            if cur.fetchone() is None:
+                return jsonify({"error": "Vaccination plan was not found for selected pet."}), 404
+
         # Create the appointment
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING appointmentID;
             """,
-            (atype, appt_datetime, vaccination_plan_id, vet_id, owner_id),
+            (atype, appt_datetime, vaccination_plan_id, vet_id, owner_id, pet_id),
         )
         new_id = cur.fetchone()["appointmentid"]
         conn.commit()
@@ -1164,10 +1388,17 @@ def appointments_list():
 
     rows = fetch_all(
         """
-        SELECT a.appointmentID, a.aType, a.dateTime, u.name AS veterinarianName, b.name AS branchName
+        SELECT
+            a.appointmentID,
+            a.aType,
+            a.dateTime,
+            u.name AS veterinarianName,
+            b.name AS branchName,
+            p.name AS petName
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         JOIN Users u ON u.userID = v.veterinarianID
+        LEFT JOIN Pet p ON p.petID = a.petID
         LEFT JOIN Branch b ON b.branchID = v.branchID
         WHERE a.petOwnerID = %s
         ORDER BY a.dateTime DESC;

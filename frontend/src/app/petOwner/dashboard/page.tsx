@@ -10,6 +10,7 @@ type WelcomeData = {
   user: { userid: number; name: string; email: string; phonenumber: string } | null;
   upcomingCount: number;
   outstandingAmount: number;
+  dueSoonVaccinationCount: number;
 };
 
 type ChipRow = {
@@ -20,6 +21,12 @@ type ChipRow = {
   islost: boolean;
   implantationdate: string | null;
   veterinarianname: string | null;
+  has_found_vet_info?: boolean;
+  found_vet_name?: string | null;
+  found_vet_branch_name?: string | null;
+  found_at?: string | null;
+  found_notes?: string | null;
+  has_unread_found_news?: boolean;
 };
 
 type VisitRow = {
@@ -51,6 +58,26 @@ type BranchRow = {
   name: string;
 };
 
+type FoundNewsItem = {
+  news_id: number;
+  created_at: string | null;
+  chip_id: number;
+  pet_id: number;
+  pet_name: string;
+  owner_id: number;
+  owner_name: string;
+  source_vet_id: number;
+  source_vet_name: string;
+  source_branch_name: string | null;
+  notes: string;
+  is_unread_owner: boolean;
+};
+
+type FoundNewsResponse = {
+  unread_count: number;
+  items: FoundNewsItem[];
+};
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PetOwnerDashboardPage() {
@@ -71,6 +98,10 @@ export default function PetOwnerDashboardPage() {
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [slots, setSlots] = useState<SlotRow[]>([]);
+  const [foundNewsItems, setFoundNewsItems] = useState<FoundNewsItem[]>([]);
+  const [foundNewsUnreadCount, setFoundNewsUnreadCount] = useState(0);
+  const [foundNewsModalOpen, setFoundNewsModalOpen] = useState(false);
+  const [markingFoundNewsRead, setMarkingFoundNewsRead] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -98,13 +129,19 @@ export default function PetOwnerDashboardPage() {
       apiGet<VisitRow[]>("/petOwner/dashboard/upcoming-visits", { ownerId }),
       apiGet<ActivityRow[]>("/petOwner/dashboard/activity", { ownerId }),
       apiGet<BranchRow[]>("/petOwner/branches"),
+      apiGet<FoundNewsResponse>("/petOwner/dashboard/microchip-found-news", { ownerId }),
     ])
-      .then(([welcomeData, chipData, visitsData, activityData, branchData]) => {
+      .then(([welcomeData, chipData, visitsData, activityData, branchData, foundNewsData]) => {
         setWelcome(welcomeData);
         setChips(chipData);
         setVisits(visitsData);
         setActivity(activityData);
         setBranches(branchData);
+        setFoundNewsItems(foundNewsData.items || []);
+        setFoundNewsUnreadCount(Number(foundNewsData.unread_count || 0));
+        if (Number(foundNewsData.unread_count || 0) > 0) {
+          setFoundNewsModalOpen(true);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load dashboard"))
       .finally(() => setLoading(false));
@@ -152,10 +189,39 @@ export default function PetOwnerDashboardPage() {
     }
   };
 
+  const handleFoundNewsAcknowledge = async () => {
+    if (!ownerId) {
+      setFoundNewsModalOpen(false);
+      return;
+    }
+    if (foundNewsUnreadCount <= 0) {
+      setFoundNewsModalOpen(false);
+      return;
+    }
+
+    setMarkingFoundNewsRead(true);
+    try {
+      await apiSend("/petOwner/dashboard/microchip-found-news/mark-read", "POST", { ownerId });
+      setFoundNewsUnreadCount(0);
+      setFoundNewsItems((current) => current.map((item) => ({ ...item, is_unread_owner: false })));
+      setChips((current) => current.map((chip) => ({ ...chip, has_unread_found_news: false })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not acknowledge found notification");
+    } finally {
+      setMarkingFoundNewsRead(false);
+      setFoundNewsModalOpen(false);
+    }
+  };
+
   // ── Derived values ────────────────────────────────────────────────────────
 
   const firstChip = chips[0] ?? null;
+  const latestFoundNewsForFirstChip = firstChip
+    ? foundNewsItems.find((item) => Number(item.chip_id) === Number(firstChip.chipid))
+    : null;
   const hasOutstanding = Number(welcome?.outstandingAmount ?? 0) > 0;
+  const dueSoonVaccinationCount = Number(welcome?.dueSoonVaccinationCount ?? 0);
+  const hasDueSoonVaccinations = dueSoonVaccinationCount > 0;
   const todayValue = new Date().toISOString().slice(0, 10);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -196,17 +262,7 @@ export default function PetOwnerDashboardPage() {
                     <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
                       Pet: {firstChip.petname} · Implanted: {formatDate(firstChip.implantationdate)}
                     </p>
-                    {!firstChip.islost ? (
-                      <button
-                        type="button"
-                        className="btn ghost"
-                        style={{ marginTop: "10px", fontSize: "12px", padding: "4px 12px" }}
-                        disabled={markingLost === firstChip.chipid}
-                        onClick={() => handleMarkLost(firstChip)}
-                      >
-                        {markingLost === firstChip.chipid ? "Marking…" : "Mark as Lost"}
-                      </button>
-                    ) : (
+                    {firstChip.islost ? (
                       <Link
                         href="/petOwner/lost-found"
                         className="btn ghost"
@@ -214,6 +270,28 @@ export default function PetOwnerDashboardPage() {
                       >
                         View Lost Report
                       </Link>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", width: "100%" }}>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          style={{ fontSize: "12px", padding: "4px 12px" }}
+                          disabled={markingLost === firstChip.chipid}
+                          onClick={() => handleMarkLost(firstChip)}
+                        >
+                          {markingLost === firstChip.chipid ? "Marking…" : "Mark as Lost"}
+                        </button>
+                        {firstChip.has_found_vet_info ? (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            style={{ fontSize: "12px", padding: "4px 12px", marginLeft: "auto" }}
+                            onClick={() => setFoundNewsModalOpen(true)}
+                          >
+                            View vet info
+                          </button>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -245,6 +323,13 @@ export default function PetOwnerDashboardPage() {
                     {hasOutstanding ? "Pay to book" : "No pending bills"}
                   </p>
                 </div>
+                <div className="kpi">
+                  <div className="label">Vaccines due soon</div>
+                  <div className="value">{dueSoonVaccinationCount}</div>
+                  <p className="muted" style={{ fontSize: "13px", margin: "6px 0 0" }}>
+                    {hasDueSoonVaccinations ? "Review vaccination tracker" : "No due vaccine in 14 days"}
+                  </p>
+                </div>
               </div>
 
               <div className="form-group mt-2">
@@ -256,16 +341,25 @@ export default function PetOwnerDashboardPage() {
               <div className="tile mt-2">
                 <div style={{ fontWeight: 700, fontSize: "13px" }}>Quick Reminders</div>
                 <p className="muted" style={{ margin: "6px 0 10px", fontSize: "13px" }}>
-                  {hasOutstanding && visits.length > 0
-                    ? "Unpaid bill detected and upcoming appointment scheduled."
-                    : hasOutstanding
-                      ? "Unpaid bill detected."
-                      : visits.length > 0
-                        ? "Upcoming appointment scheduled."
-                        : "No pending reminders."}
+                  {hasOutstanding && hasDueSoonVaccinations && visits.length > 0
+                    ? "Unpaid bill, upcoming appointment, and due vaccination reminder found."
+                    : hasOutstanding && hasDueSoonVaccinations
+                      ? "Unpaid bill and due vaccination reminder found."
+                      : hasOutstanding && visits.length > 0
+                        ? "Unpaid bill detected and upcoming appointment scheduled."
+                        : hasDueSoonVaccinations && visits.length > 0
+                          ? "Due vaccination reminder and upcoming appointment found."
+                          : hasOutstanding
+                            ? "Unpaid bill detected."
+                            : hasDueSoonVaccinations
+                              ? "Due vaccination reminder found."
+                              : visits.length > 0
+                                ? "Upcoming appointment scheduled."
+                                : "No pending reminders."}
                 </p>
                 {hasOutstanding ? <span className="pill info">Billing</span> : null}
                 {visits.length > 0 ? <span className="pill wait">Upcoming</span> : null}
+                {hasDueSoonVaccinations ? <span className="pill wait">Vaccination due</span> : null}
               </div>
             </div>
           </section>
@@ -447,6 +541,74 @@ export default function PetOwnerDashboardPage() {
           </section>
         </>
       )}
+
+      {foundNewsModalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(10, 20, 40, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 80,
+            padding: "16px",
+          }}
+        >
+          <div className="card" style={{ width: "min(760px, 96vw)", maxHeight: "86vh", overflowY: "auto" }}>
+            <h2 style={{ marginTop: 0 }}>Pet Found Notification</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Your pet was reported as found. Please check the veterinarian details below.
+            </p>
+
+            {foundNewsItems.length === 0 ? (
+              latestFoundNewsForFirstChip ? (
+                <div className="tile">
+                  <div style={{ fontWeight: 700 }}>{latestFoundNewsForFirstChip.pet_name} · Chip #{latestFoundNewsForFirstChip.chip_id}</div>
+                  <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
+                    Found by {latestFoundNewsForFirstChip.source_vet_name} · {latestFoundNewsForFirstChip.source_branch_name ?? "Unassigned branch"}
+                  </p>
+                  {latestFoundNewsForFirstChip.notes ? (
+                    <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
+                      Note: {latestFoundNewsForFirstChip.notes}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="muted" style={{ marginBottom: 0 }}>No found notification available.</p>
+              )
+            ) : (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {foundNewsItems.map((item) => (
+                  <div key={`${item.news_id}-${item.created_at || ""}`} className="tile">
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" }}>
+                      <div style={{ fontWeight: 700 }}>{item.pet_name} · Chip #{item.chip_id}</div>
+                      <span className={`pill ${item.is_unread_owner ? "wait" : "ok"}`}>{item.is_unread_owner ? "New" : "Seen"}</span>
+                    </div>
+                    <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
+                      Found by {item.source_vet_name} · {item.source_branch_name ?? "Unassigned branch"}
+                    </p>
+                    <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
+                      Date: {formatDate(item.created_at)}
+                    </p>
+                    {item.notes ? (
+                      <p className="muted" style={{ margin: "6px 0 0", fontSize: "13px" }}>
+                        Note: {item.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "14px" }}>
+              <button type="button" className="btn" onClick={() => void handleFoundNewsAcknowledge()} disabled={markingFoundNewsRead}>
+                {markingFoundNewsRead ? "Saving..." : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

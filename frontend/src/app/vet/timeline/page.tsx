@@ -6,6 +6,7 @@ import { vetFetchJson, vetGetLoggedInVetId, vetGetSearchValue, vetParsePositiveI
 import ChipStatusReporter from "./chip_status_reporter";
 import LogoutMenuLink from "../logout_menu_link";
 import ReferralCreator from "./referral_creator";
+import MicrochipQuickActions from "../dashboard/microchip_quick_actions";
 
 type VetTimelinePet = {
   petid: number;
@@ -300,6 +301,29 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
     status: data.microchip?.status ?? null,
     lastKnownLocation: data.microchip?.last_known_location ?? null,
   };
+  const canMarkFound =
+    Boolean(hasMicrochipRecord) &&
+    microchipSnapshot.status === "Reported Lost";
+  const referralPetOptions = data.available_pets.map((pet) => ({
+    petId: pet.petid,
+    petName: pet.pet_name,
+    petOwnerId: pet.ownerid,
+    petOwnerName: pet.owner_name,
+    vaccinationPlanId:
+      data.selected_pet_id === pet.petid && data.vaccination_plans.length === 1
+        ? data.vaccination_plans[0].planid
+        : null,
+  }));
+  const selectedPetReferralContext = data.selected_pet
+    ? {
+        petId: data.selected_pet.petid,
+        petName: data.selected_pet.pet_name,
+        petOwnerId: data.selected_pet.ownerid,
+        petOwnerName: data.selected_pet.owner_name,
+        vaccinationPlanId:
+          data.vaccination_plans.length === 1 ? data.vaccination_plans[0].planid : null,
+      }
+    : null;
 
   return (
     <main className={styles.page}>
@@ -355,18 +379,16 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
 
             <section className={styles.card}>
               <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                Open appointments
-              </Link>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create visit record
-              </Link>
-              <Link
-                href="/vet/timeline?openReferral=1#create-referral"
-                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
-              >
-                Create referral
-              </Link>
+              <div className={styles.quickActionsList}>
+                <MicrochipQuickActions
+                  vetId={selectedVetId}
+                  initialNewsCount={0}
+                  initialReferralTargets={data.referral_targets}
+                  autoOpenReferral={autoOpenReferral}
+                  selectedPetContext={selectedPetReferralContext}
+                  referralPetOptions={referralPetOptions}
+                />
+              </div>
             </section>
 
             <section className={styles.card}>
@@ -478,7 +500,11 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                     <p className={styles.tileSub}>No microchip record is registered for this pet.</p>
                   )}
                   {data.selected_pet_id ? (
-                    <ChipStatusReporter vetId={selectedVetId} petId={data.selected_pet_id} />
+                    <ChipStatusReporter
+                      vetId={selectedVetId}
+                      petId={data.selected_pet_id}
+                      canMarkFound={canMarkFound}
+                    />
                   ) : null}
                 </div>
               </section>
@@ -556,6 +582,8 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                   vetId={selectedVetId}
                   referralTargets={data.referral_targets}
                   autoOpen={autoOpenReferral}
+                  petContext={selectedPetReferralContext}
+                  petOptions={referralPetOptions}
                 />
                 <div className={`${styles.tableWrap} ${styles.mt1}`}>
                   <table>

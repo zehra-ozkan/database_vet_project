@@ -93,24 +93,21 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         
+        # Check if user already exists
+        cur.execute(''' SELECT userID
+            FROM Users
+            WHERE email = %s OR phoneNumber = %s 
+            ''', (email, phone))
+        existing_user = cur.fetchone()
+
+        if existing_user is not None:
+            return jsonify({"error": "Please use a different email or phone number"}), 409
+
         # Insert into Users table
         cur.execute(
             'INSERT INTO Users (name, email, password, phoneNumber) VALUES (%s, %s, %s, %s) RETURNING userID',
             (name, email, password, phone)
         )
-        user_id = cur.fetchone()[0]
-
-        cur.execute(''' SELECT userID
-            FROM Users
-            WHERE email = %s AND phoneNumber = %s 
-            ''', (email, phone))
-        user_id = cur.fetchone()[0]
-
-        if user_id is not None:
-            return jsonify({"error": "Please use a different email or phone number"}), 409
-        
-        cur.execute(''' INSERT INTO Users (name, email, password, phoneNumber) VALUES (%s, %s, %s, %s) RETURNING userID''', (name, email, password, phone))
-        
         user_id = cur.fetchone()[0]
         # Insert into role-specific table
         if role == 'PetOwner':

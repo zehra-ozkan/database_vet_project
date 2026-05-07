@@ -34,6 +34,7 @@ CREATE TABLE VaccinationRecord (
     shotDate DATE,
     frequency VARCHAR(50),
     nextDueDate DATE,
+    batchNo VARCHAR(80),
     planID INT NOT NULL,
     petID INT NOT NULL,
     
@@ -42,7 +43,9 @@ CREATE TABLE VaccinationRecord (
     FOREIGN KEY (planID) REFERENCES VaccinationPlan(planID) ON DELETE CASCADE,
     
     -- Now we just safely link this vaccination directly to the Pet
-    FOREIGN KEY (petID) REFERENCES Pet(petID) ON DELETE CASCADE
+    FOREIGN KEY (petID) REFERENCES Pet(petID) ON DELETE CASCADE,
+    CONSTRAINT chk_vaccinationrecord_batch_nonempty
+        CHECK (batchNo IS NULL OR LENGTH(TRIM(batchNo)) > 0)
 );
 
 CREATE TABLE Involves (

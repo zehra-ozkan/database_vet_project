@@ -21,6 +21,15 @@ def _vet_parse_filter_date(raw_date):
     return datetime.strptime(raw_date, "%Y-%m-%d").date()
 
 
+def _vet_parse_optional_date(raw_value, field_name):
+    """Parse optional YYYY-MM-DD date values."""
+    if raw_value is None or raw_value == "":
+        return None
+    if not isinstance(raw_value, str):
+        raise ValueError(f"{field_name} must be a YYYY-MM-DD date.")
+    return datetime.strptime(raw_value.strip(), "%Y-%m-%d").date()
+
+
 def _vet_parse_optional_int(raw_value):
     """Parse optional integer values."""
     if raw_value is None or raw_value == "":
@@ -29,6 +38,19 @@ def _vet_parse_optional_int(raw_value):
     if parsed_value <= 0:
         raise ValueError
     return parsed_value
+
+
+def _vet_parse_vaccination_plan_mode(raw_value):
+    """Parse optional vaccination plan mode."""
+    if raw_value is None or raw_value == "":
+        return "auto"
+    if not isinstance(raw_value, str):
+        raise ValueError("vaccinationPlanMode must be one of: new, existing.")
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"new", "existing"}:
+        return normalized
+    raise ValueError("vaccinationPlanMode must be one of: new, existing.")
 
 
 def _vet_parse_positive_int_list(raw_values, field_name):
@@ -48,6 +70,32 @@ def _vet_parse_positive_int_list(raw_values, field_name):
             raise ValueError(f"{field_name} must contain positive integers.")
         parsed_values.append(parsed_value)
     return parsed_values
+
+
+def _vet_validate_prescription_medicine_ids(cursor, medicine_ids):
+    """Ensure prescription medicines are valid non-vaccine items."""
+    if not medicine_ids:
+        return
+
+    cursor.execute(
+        """
+        SELECT
+            m.medicineid,
+            COALESCE(m.name, 'Unknown') AS medicine_name
+        FROM medicine m
+        WHERE m.medicineid = ANY(%s::int[])
+          AND m.category::text = 'vaccine'
+        ORDER BY m.name ASC
+        """,
+        (medicine_ids,),
+    )
+    vaccine_rows = cursor.fetchall()
+    if vaccine_rows:
+        vaccine_names = ", ".join(row["medicine_name"] for row in vaccine_rows)
+        raise ValueError(
+            "Vaccines must be recorded in the Vaccination section, not in Prescription"
+            f" ({vaccine_names})."
+        )
 
 
 def _vet_parse_required_text(raw_value, field_name):
@@ -131,7 +179,7 @@ def _vet_error_response(exc):
             status_code = 400
 
     if "Medicine stock cannot become negative" in message:
-        return jsonify({"error": "Insufficient medicine stock for this prescription."}), 409
+        return jsonify({"error": "Insufficient medicine stock for this operation."}), 409
 
     if "maximum daily appointment limit" in message:
         return jsonify({"error": message}), 409
@@ -150,6 +198,7 @@ def _vet_fetch_appointment_context(cursor, appointment_id, vet_id):
             a.vaccinationplanid,
             a.veterinarianid,
             a.petownerid,
+            a.petid,
             uo.name AS owner_name,
             COALESCE(b.branchid, 0) AS branchid,
             COALESCE(b.name, 'Unassigned') AS branch_name
@@ -287,6 +336,7 @@ def vet_get_appointments():
                 a.appointmentid,
                 a.datetime,
                 a.atype,
+                p.petid,
                 COALESCE(p.name, 'Unknown') AS pet_name,
                 uo.name AS owner_name,
                 COALESCE(b.name, 'Unassigned') AS branch_name,
@@ -300,13 +350,7 @@ def vet_get_appointments():
             LEFT JOIN branch b ON b.branchid = v.branchid
             JOIN petowner po ON po.ownerid = a.petownerid
             JOIN users uo ON uo.userid = po.ownerid
-            LEFT JOIN LATERAL (
-                SELECT p.name
-                FROM pet p
-                WHERE p.ownerid = a.petownerid
-                ORDER BY p.petid ASC
-                LIMIT 1
-            ) p ON TRUE
+            LEFT JOIN pet p ON p.petid = a.petid
             LEFT JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             WHERE a.veterinarianid = %s
               AND (%s::date IS NULL OR a.datetime::date = %s::date)
@@ -327,6 +371,7 @@ def vet_get_appointments():
                 COALESCE(br.name, 'Unassigned') AS referrer_branch_name,
                 inferred.petownerid AS inferred_owner_id,
                 COALESCE(uo.name, 'Unknown') AS inferred_owner_name,
+                inferred.petid AS inferred_pet_id,
                 inferred.vaccinationplanid AS inferred_vaccination_plan_id,
                 inferred.atype::text AS inferred_appointment_type
             FROM refers r
@@ -336,6 +381,7 @@ def vet_get_appointments():
             LEFT JOIN LATERAL (
                 SELECT
                     a.petownerid,
+                    a.petid,
                     a.vaccinationplanid,
                     a.atype
                 FROM appointment a
@@ -345,10 +391,11 @@ def vet_get_appointments():
             ) inferred ON TRUE
             LEFT JOIN users uo ON uo.userid = inferred.petownerid
             WHERE r.referee = %s
+              AND COALESCE(r.diagnosis, '') NOT LIKE %s
             ORDER BY r.referraldate DESC
             LIMIT 20
             """,
-            (vet_id,),
+            (vet_id, "[[MICROCHIP_NEWS|%"),
         )
         incoming_referrals = cursor.fetchall()
         normalized_incoming_referrals = []
@@ -409,11 +456,15 @@ def vet_get_appointment_detail(appointment_id):
             return jsonify({"error": "Appointment not found for this veterinarian."}), 404
 
         owner_pets = _vet_fetch_owner_pets(cursor, int(appointment["petownerid"]))
-
-        try:
-            selected_pet_id = _vet_resolve_selected_pet_id(owner_pets, selected_pet_id_requested)
-        except ValueError:
-            return jsonify({"error": "Selected pet is not available for this appointment owner."}), 404
+        appointment_pet_id = int(appointment["petid"]) if appointment.get("petid") is not None else None
+        if appointment_pet_id is None:
+            return jsonify({"error": "Appointment is missing pet context."}), 409
+        if (
+            selected_pet_id_requested is not None
+            and int(selected_pet_id_requested) != appointment_pet_id
+        ):
+            return jsonify({"error": "Selected pet does not match appointment pet."}), 409
+        selected_pet_id = appointment_pet_id
 
         selected_pet = next(
             (pet for pet in owner_pets if int(pet["petid"]) == selected_pet_id),
@@ -476,10 +527,56 @@ def vet_get_appointment_detail(appointment_id):
                 (selected_pet_id,),
             )
             vaccination_history = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT
+                    vp.planid,
+                    vp.nextvaccinationdate,
+                    vp.veterinarianid,
+                    COALESCE(u.name, 'Unknown') AS veterinarian_name,
+                    COALESCE(plan_stats.applied_dose_count, 0) AS applied_dose_count,
+                    plan_stats.total_dose_count,
+                    plan_stats.last_shot_date,
+                    latest_vaccine.latest_vaccine_id,
+                    latest_vaccine.latest_vaccine_name
+                FROM vaccinationplan vp
+                LEFT JOIN users u
+                    ON u.userid = vp.veterinarianid
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(vr.recordid)::int AS applied_dose_count,
+                        MAX(CASE WHEN vr.threshold IS NOT NULL AND vr.threshold > 0 THEN vr.threshold END)::int AS total_dose_count,
+                        MAX(vr.shotdate) AS last_shot_date
+                    FROM vaccinationrecord vr
+                    WHERE vr.planid = vp.planid
+                ) AS plan_stats ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        v.vaccineid AS latest_vaccine_id,
+                        COALESCE(m.name, 'Unknown') AS latest_vaccine_name
+                    FROM vaccinationrecord vr
+                    LEFT JOIN involves i ON i.recordid = vr.recordid
+                    LEFT JOIN vaccine v ON v.vaccineid = i.vaccineid
+                    LEFT JOIN medicine m ON m.medicineid = v.vaccineid
+                    WHERE vr.planid = vp.planid
+                    ORDER BY vr.shotdate DESC NULLS LAST, vr.recordid DESC
+                    LIMIT 1
+                ) AS latest_vaccine ON TRUE
+                WHERE vp.petid = %s
+                ORDER BY
+                    CASE WHEN vp.nextvaccinationdate IS NULL THEN 1 ELSE 0 END,
+                    vp.nextvaccinationdate ASC NULLS LAST,
+                    vp.planid DESC
+                """,
+                (selected_pet_id,),
+            )
+            existing_vaccination_plans = cursor.fetchall()
         else:
             medical_history = []
             prescription_history = []
             vaccination_history = []
+            existing_vaccination_plans = []
 
         cursor.execute(
             """
@@ -592,12 +689,13 @@ def vet_get_appointment_detail(appointment_id):
             {
                 "vet_id": vet_id,
                 "appointment": _vet_serialize_row(appointment),
-                "pet_options": vet_serialize_records(owner_pets),
+                "pet_options": vet_serialize_records([selected_pet] if selected_pet else []),
                 "selected_pet_id": selected_pet_id,
                 "selected_pet": _vet_serialize_row(selected_pet),
                 "medical_history": vet_serialize_records(medical_history),
                 "prescription_history": vet_serialize_records(prescription_history),
                 "vaccination_history": vet_serialize_records(vaccination_history),
+                "existing_vaccination_plans": vet_serialize_records(existing_vaccination_plans),
                 "latest_visit_summary": _vet_serialize_row(latest_visit_summary),
                 "is_completed": existing_bill is not None,
                 "existing_bill": _vet_serialize_row(existing_bill),
@@ -699,8 +797,6 @@ def vet_create_prescription(appointment_id):
         vet_id = _vet_resolve_vet_id(payload)
         pet_id = _vet_parse_optional_int(payload.get("petId"))
         treatment = _vet_parse_required_text(payload.get("treatment"), "treatment")
-        if pet_id is None:
-            raise ValueError("petId is required.")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -731,10 +827,19 @@ def vet_create_prescription(appointment_id):
         if not appointment:
             return jsonify({"error": "Appointment not found for this veterinarian."}), 404
 
-        owner_pets = _vet_fetch_owner_pets(cursor, int(appointment["petownerid"]))
-        allowed_pet_ids = {int(row["petid"]) for row in owner_pets}
-        if pet_id not in allowed_pet_ids:
-            return jsonify({"error": "Selected pet does not belong to this appointment owner."}), 409
+        appointment_pet_id = int(appointment["petid"]) if appointment.get("petid") is not None else None
+        if appointment_pet_id is None:
+            return jsonify({"error": "Appointment is missing pet context."}), 409
+
+        if pet_id is None:
+            pet_id = appointment_pet_id
+        elif int(pet_id) != appointment_pet_id:
+            return jsonify({"error": "Selected pet does not match appointment pet."}), 409
+
+        try:
+            _vet_validate_prescription_medicine_ids(cursor, medicine_ids)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         cursor.execute(
             """
@@ -798,6 +903,7 @@ def vet_create_referral():
         diagnosis = payload.get("diagnosis")
         referral_date = payload.get("referralDate")
         pet_owner_id = _vet_parse_optional_int(payload.get("petOwnerId"))
+        pet_id = _vet_parse_optional_int(payload.get("petId"))
         vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
         appointment_type_raw = payload.get("appointmentType")
         appointment_type = (
@@ -860,6 +966,53 @@ def vet_create_referral():
             if cursor.fetchone() is None:
                 return jsonify({"error": "petOwnerId not found."}), 404
 
+        if vaccination_plan_id is not None:
+            cursor.execute(
+                """
+                SELECT vp.petid
+                FROM vaccinationplan vp
+                WHERE vp.planid = %s
+                """,
+                (vaccination_plan_id,),
+            )
+            plan_row = cursor.fetchone()
+            if plan_row is None:
+                return jsonify({"error": "vaccinationPlanId not found."}), 404
+            plan_pet_id = int(plan_row["petid"])
+            if pet_id is None:
+                pet_id = plan_pet_id
+            elif int(pet_id) != plan_pet_id:
+                return jsonify({"error": "petId does not match vaccination plan pet."}), 409
+
+        if pet_owner_id is not None and pet_id is None:
+            cursor.execute(
+                """
+                SELECT p.petid
+                FROM pet p
+                WHERE p.ownerid = %s
+                ORDER BY p.petid ASC
+                """,
+                (pet_owner_id,),
+            )
+            owner_pets = cursor.fetchall()
+            if len(owner_pets) == 1:
+                pet_id = int(owner_pets[0]["petid"])
+            else:
+                return jsonify({"error": "petId is required when owner has multiple pets."}), 400
+
+        if pet_owner_id is not None and pet_id is not None:
+            cursor.execute(
+                """
+                SELECT p.petid
+                FROM pet p
+                WHERE p.petid = %s
+                  AND p.ownerid = %s
+                """,
+                (pet_id, pet_owner_id),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": "petId does not belong to petOwnerId."}), 409
+
         cursor.execute(
             """
             INSERT INTO refers (referrer, referee, referraldate, diagnosis)
@@ -894,10 +1047,11 @@ def vet_create_referral():
                     datetime,
                     vaccinationplanid,
                     veterinarianid,
-                    petownerid
+                    petownerid,
+                    petid
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid, petid
                 """,
                 (
                     appointment_type,
@@ -905,6 +1059,7 @@ def vet_create_referral():
                     vaccination_plan_id,
                     referee_vet_id,
                     pet_owner_id,
+                    pet_id,
                 ),
             )
             follow_up_appointment = cursor.fetchone()
@@ -959,6 +1114,7 @@ def vet_approve_referral():
         parsed_datetime = parsed_datetime.replace(second=0, microsecond=0)
 
         pet_owner_id = _vet_parse_optional_int(payload.get("petOwnerId"))
+        pet_id = _vet_parse_optional_int(payload.get("petId"))
         vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
         appointment_type_raw = payload.get("appointmentType")
         appointment_type = (
@@ -1001,7 +1157,7 @@ def vet_approve_referral():
         if pet_owner_id is None:
             cursor.execute(
                 """
-                SELECT a.petownerid, a.vaccinationplanid, a.atype
+                SELECT a.petownerid, a.petid, a.vaccinationplanid, a.atype
                 FROM appointment a
                 WHERE a.veterinarianid = %s
                 ORDER BY ABS(a.datetime::date - %s::date) ASC, a.datetime DESC
@@ -1013,10 +1169,59 @@ def vet_approve_referral():
             if inferred is None:
                 return jsonify({"error": "Could not infer pet owner context for this referral."}), 409
             pet_owner_id = int(inferred["petownerid"])
+            if pet_id is None and inferred.get("petid") is not None:
+                pet_id = int(inferred["petid"])
             if vaccination_plan_id is None:
                 vaccination_plan_id = inferred["vaccinationplanid"]
             if payload.get("appointmentType") is None and inferred.get("atype"):
                 appointment_type = str(inferred["atype"]).upper()
+
+        if vaccination_plan_id is not None:
+            cursor.execute(
+                """
+                SELECT vp.petid
+                FROM vaccinationplan vp
+                WHERE vp.planid = %s
+                """,
+                (vaccination_plan_id,),
+            )
+            plan_row = cursor.fetchone()
+            if plan_row is None:
+                return jsonify({"error": "vaccinationPlanId not found."}), 404
+            plan_pet_id = int(plan_row["petid"])
+            if pet_id is None:
+                pet_id = plan_pet_id
+            elif int(pet_id) != plan_pet_id:
+                return jsonify({"error": "petId does not match vaccination plan pet."}), 409
+
+        if pet_owner_id is not None and pet_id is None:
+            cursor.execute(
+                """
+                SELECT p.petid
+                FROM pet p
+                WHERE p.ownerid = %s
+                ORDER BY p.petid ASC
+                """,
+                (pet_owner_id,),
+            )
+            owner_pets = cursor.fetchall()
+            if len(owner_pets) == 1:
+                pet_id = int(owner_pets[0]["petid"])
+            else:
+                return jsonify({"error": "petId is required when owner has multiple pets."}), 400
+
+        if pet_owner_id is not None and pet_id is not None:
+            cursor.execute(
+                """
+                SELECT p.petid
+                FROM pet p
+                WHERE p.petid = %s
+                  AND p.ownerid = %s
+                """,
+                (pet_id, pet_owner_id),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": "petId does not belong to petOwnerId."}), 409
 
         slot_datetime = _vet_find_next_available_datetime(cursor, referee_vet_id, parsed_datetime)
 
@@ -1027,10 +1232,11 @@ def vet_approve_referral():
                 datetime,
                 vaccinationplanid,
                 veterinarianid,
-                petownerid
+                petownerid,
+                petid
             )
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING appointmentid, atype, datetime, vaccinationplanid, veterinarianid, petownerid, petid
             """,
             (
                 appointment_type,
@@ -1038,6 +1244,7 @@ def vet_approve_referral():
                 vaccination_plan_id,
                 referee_vet_id,
                 pet_owner_id,
+                pet_id,
             ),
         )
         created_appointment = cursor.fetchone()
@@ -1179,6 +1386,39 @@ def vet_finalize_appointment(appointment_id):
             else None
         )
 
+        vaccination_vaccine_id = _vet_parse_optional_int(payload.get("vaccinationVaccineId"))
+        vaccination_plan_mode = _vet_parse_vaccination_plan_mode(payload.get("vaccinationPlanMode"))
+        vaccination_plan_id = _vet_parse_optional_int(payload.get("vaccinationPlanId"))
+        vaccination_shot_date = _vet_parse_optional_date(
+            payload.get("vaccinationShotDate"),
+            "vaccinationShotDate",
+        )
+        vaccination_next_due_date = _vet_parse_optional_date(
+            payload.get("vaccinationNextDueDate"),
+            "vaccinationNextDueDate",
+        )
+        vaccination_frequency_days = _vet_parse_optional_int(
+            payload.get("vaccinationFrequencyDays")
+        )
+        vaccination_dose_count = _vet_parse_optional_int(
+            payload.get("vaccinationDoseCount")
+        )
+        vaccination_frequency_legacy_raw = payload.get("vaccinationFrequency")
+        vaccination_frequency_legacy = (
+            vaccination_frequency_legacy_raw.strip()
+            if isinstance(vaccination_frequency_legacy_raw, str)
+            and vaccination_frequency_legacy_raw.strip()
+            else None
+        )
+        vaccination_batch_no_raw = payload.get("vaccinationBatchNo")
+        if vaccination_batch_no_raw is None:
+            vaccination_batch_no = None
+        elif not isinstance(vaccination_batch_no_raw, str):
+            raise ValueError("vaccinationBatchNo must be a string.")
+        else:
+            normalized_batch_no = vaccination_batch_no_raw.strip()
+            vaccination_batch_no = normalized_batch_no if normalized_batch_no else None
+
         new_datetime_raw = payload.get("newDateTime")
         parsed_datetime = None
         if isinstance(new_datetime_raw, str) and new_datetime_raw.strip():
@@ -1192,8 +1432,23 @@ def vet_finalize_appointment(appointment_id):
 
     if medicine_ids and not treatment:
         return jsonify({"error": "treatment is required when medicineIds are provided."}), 400
-    if treatment and selected_pet_id is None:
-        return jsonify({"error": "petId is required when treatment is provided."}), 400
+    if vaccination_vaccine_id is None and (
+        vaccination_plan_id is not None
+        or vaccination_plan_mode in {"new", "existing"}
+        or vaccination_shot_date is not None
+        or vaccination_next_due_date is not None
+        or vaccination_frequency_days is not None
+        or vaccination_dose_count is not None
+        or vaccination_frequency_legacy is not None
+        or vaccination_batch_no is not None
+    ):
+        return jsonify({"error": "vaccinationVaccineId is required when vaccination details are provided."}), 400
+    if vaccination_vaccine_id is not None and vaccination_plan_mode == "existing" and vaccination_plan_id is None:
+        return jsonify({"error": "Select an existing vaccination plan before completing."}), 400
+    if vaccination_vaccine_id is not None and vaccination_plan_mode == "new" and vaccination_plan_id is not None:
+        return jsonify({"error": "Do not send vaccinationPlanId when creating a new plan."}), 400
+    if vaccination_vaccine_id is not None and vaccination_batch_no is None:
+        return jsonify({"error": "vaccinationBatchNo is required when vaccination is provided."}), 400
     if (referee_vet_id is None) != (referral_diagnosis is None):
         return jsonify({"error": "refereeVetId and referralDiagnosis must be provided together."}), 400
     if referee_vet_id is not None and referee_vet_id == vet_id:
@@ -1209,6 +1464,13 @@ def vet_finalize_appointment(appointment_id):
         appointment = _vet_fetch_appointment_context(cursor, appointment_id, vet_id)
         if not appointment:
             return jsonify({"error": "Appointment not found for this veterinarian."}), 404
+        appointment_pet_id = int(appointment["petid"]) if appointment.get("petid") is not None else None
+        if appointment_pet_id is None:
+            return jsonify({"error": "Appointment is missing pet context."}), 409
+        if selected_pet_id is None:
+            selected_pet_id = appointment_pet_id
+        elif int(selected_pet_id) != appointment_pet_id:
+            return jsonify({"error": "Selected pet does not match appointment pet."}), 409
 
         cursor.execute(
             """
@@ -1224,6 +1486,7 @@ def vet_finalize_appointment(appointment_id):
             return jsonify({"error": "Appointment is already completed."}), 409
 
         follow_up_appointment = None
+        follow_up_vaccination_plan_id = appointment["vaccinationplanid"]
         current_datetime = appointment["datetime"]
         if isinstance(current_datetime, datetime):
             current_datetime = current_datetime.replace(second=0, microsecond=0)
@@ -1263,12 +1526,13 @@ def vet_finalize_appointment(appointment_id):
 
         created_prescription = None
         linked_medicines = []
-        if treatment:
-            owner_pets = _vet_fetch_owner_pets(cursor, int(appointment["petownerid"]))
-            allowed_pet_ids = {int(row["petid"]) for row in owner_pets}
-            if selected_pet_id not in allowed_pet_ids:
-                return jsonify({"error": "Selected pet does not belong to this appointment owner."}), 409
 
+        try:
+            _vet_validate_prescription_medicine_ids(cursor, medicine_ids)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        if treatment:
             cursor.execute(
                 """
                 INSERT INTO prescription (treatment, veterinarianid, petid, prescriptiondate)
@@ -1289,6 +1553,226 @@ def vet_finalize_appointment(appointment_id):
                     (created_prescription["prescriptionid"], medicine_id),
                 )
                 linked_medicines.append(cursor.fetchone())
+
+        created_vaccination_record = None
+        linked_vaccine = None
+        if vaccination_vaccine_id is not None:
+            cursor.execute(
+                """
+                SELECT v.vaccineid
+                FROM vaccine v
+                WHERE v.vaccineid = %s
+                """,
+                (vaccination_vaccine_id,),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": "Selected vaccine was not found."}), 404
+
+            effective_shot_date = vaccination_shot_date or date.today()
+            vaccination_frequency = None
+            if vaccination_frequency_days is not None:
+                vaccination_frequency = f"{vaccination_frequency_days} days"
+            elif vaccination_frequency_legacy is not None:
+                vaccination_frequency = vaccination_frequency_legacy
+
+            if vaccination_plan_mode == "existing":
+                resolved_plan_id = vaccination_plan_id
+            elif vaccination_plan_mode == "new":
+                resolved_plan_id = None
+            else:
+                resolved_plan_id = (
+                    vaccination_plan_id
+                    if vaccination_plan_id is not None
+                    else appointment["vaccinationplanid"]
+                )
+
+            existing_plan_next_due_date = None
+            existing_plan_frequency = None
+            doses_completed_before = 0
+            inferred_total_dose_count = None
+
+            if resolved_plan_id is not None:
+                cursor.execute(
+                    """
+                    SELECT
+                        vp.planid,
+                        vp.nextvaccinationdate
+                    FROM vaccinationplan vp
+                    WHERE vp.planid = %s
+                      AND vp.petid = %s
+                    """,
+                    (resolved_plan_id, selected_pet_id),
+                )
+                existing_plan = cursor.fetchone()
+                if existing_plan is None:
+                    return jsonify(
+                        {"error": "Selected vaccination plan is not valid for the selected pet."}
+                    ), 409
+                existing_plan_next_due_date = existing_plan["nextvaccinationdate"]
+
+                cursor.execute(
+                    """
+                    SELECT
+                        v.vaccineid,
+                        vr.frequency,
+                        COALESCE(m.name, 'Unknown') AS vaccine_name
+                    FROM vaccinationrecord vr
+                    LEFT JOIN involves i ON i.recordid = vr.recordid
+                    LEFT JOIN vaccine v ON v.vaccineid = i.vaccineid
+                    LEFT JOIN medicine m ON m.medicineid = v.vaccineid
+                    WHERE vr.planid = %s
+                    ORDER BY vr.shotdate DESC NULLS LAST, vr.recordid DESC
+                    LIMIT 1
+                    """,
+                    (resolved_plan_id,),
+                )
+                existing_plan_vaccine = cursor.fetchone()
+                if existing_plan_vaccine and existing_plan_vaccine.get("frequency"):
+                    existing_plan_frequency = str(existing_plan_vaccine["frequency"])
+                if (
+                    existing_plan_vaccine
+                    and existing_plan_vaccine.get("vaccineid") is not None
+                    and int(existing_plan_vaccine["vaccineid"]) != int(vaccination_vaccine_id)
+                ):
+                    return jsonify(
+                        {
+                            "error": (
+                                "Selected plan is already linked to "
+                                f"{existing_plan_vaccine['vaccine_name']}. "
+                                "Choose that vaccine or start a new plan."
+                            )
+                        }
+                    ), 409
+
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*)::int AS dose_count,
+                        MAX(CASE WHEN vr.threshold IS NOT NULL AND vr.threshold > 0 THEN vr.threshold END)::int AS total_dose_count
+                    FROM vaccinationrecord vr
+                    WHERE vr.planid = %s
+                    """,
+                    (resolved_plan_id,),
+                )
+                plan_stats = cursor.fetchone() or {}
+                doses_completed_before = int(plan_stats.get("dose_count") or 0)
+                if plan_stats.get("total_dose_count"):
+                    inferred_total_dose_count = int(plan_stats["total_dose_count"])
+            else:
+                if (
+                    vaccination_next_due_date is None
+                    and vaccination_frequency_days is None
+                    and vaccination_dose_count is None
+                ):
+                    return jsonify(
+                        {
+                            "error": (
+                                "New plan requires next due date, frequency days, "
+                                "or total doses."
+                            )
+                        }
+                    ), 400
+
+            if vaccination_frequency is None and existing_plan_frequency:
+                vaccination_frequency = existing_plan_frequency
+
+            effective_total_dose_count = (
+                vaccination_dose_count
+                if vaccination_dose_count is not None
+                else inferred_total_dose_count
+            )
+            current_dose_number = doses_completed_before + 1
+            if (
+                effective_total_dose_count is not None
+                and effective_total_dose_count < current_dose_number
+            ):
+                return jsonify(
+                    {
+                        "error": (
+                            "vaccinationDoseCount is lower than already recorded doses "
+                            "for this vaccination plan."
+                        )
+                    }
+                ), 409
+
+            plan_completed = (
+                effective_total_dose_count is not None
+                and current_dose_number >= effective_total_dose_count
+            )
+            resolved_next_due_date = vaccination_next_due_date
+            if not plan_completed and resolved_next_due_date is None and vaccination_frequency_days is not None:
+                resolved_next_due_date = effective_shot_date + timedelta(days=vaccination_frequency_days)
+            if not plan_completed and resolved_next_due_date is None and resolved_plan_id is not None:
+                resolved_next_due_date = existing_plan_next_due_date
+            if plan_completed:
+                resolved_next_due_date = None
+            if not plan_completed and resolved_next_due_date is None:
+                return jsonify(
+                    {
+                        "error": (
+                            "Vaccination next due date is required unless this shot completes "
+                            "the dose schedule."
+                        )
+                    }
+                ), 400
+
+            if resolved_plan_id is None:
+                cursor.execute(
+                    """
+                    INSERT INTO vaccinationplan (nextvaccinationdate, petid, veterinarianid)
+                    VALUES (%s, %s, %s)
+                    RETURNING planid
+                    """,
+                    (resolved_next_due_date, selected_pet_id, vet_id),
+                )
+                resolved_plan_id = cursor.fetchone()["planid"]
+
+            cursor.execute(
+                """
+                UPDATE vaccinationplan
+                SET nextvaccinationdate = %s,
+                    veterinarianid = %s
+                WHERE planid = %s
+                """,
+                (resolved_next_due_date, vet_id, resolved_plan_id),
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO vaccinationrecord (
+                    threshold,
+                    shotdate,
+                    frequency,
+                    nextduedate,
+                    batchno,
+                    planid,
+                    petid
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING recordid, threshold, shotdate, frequency, nextduedate, batchno, planid, petid
+                """,
+                (
+                    effective_total_dose_count,
+                    effective_shot_date,
+                    vaccination_frequency,
+                    resolved_next_due_date,
+                    vaccination_batch_no,
+                    resolved_plan_id,
+                    selected_pet_id,
+                ),
+            )
+            created_vaccination_record = cursor.fetchone()
+
+            cursor.execute(
+                """
+                INSERT INTO involves (recordid, vaccineid)
+                VALUES (%s, %s)
+                RETURNING recordid, vaccineid
+                """,
+                (created_vaccination_record["recordid"], vaccination_vaccine_id),
+            )
+            linked_vaccine = cursor.fetchone()
+            follow_up_vaccination_plan_id = resolved_plan_id
 
         created_referral = None
         if referee_vet_id is not None and referral_diagnosis is not None:
@@ -1322,17 +1806,19 @@ def vet_finalize_appointment(appointment_id):
                     datetime,
                     vaccinationplanid,
                     veterinarianid,
-                    petownerid
+                    petownerid,
+                    petid
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING appointmentid, datetime, atype, veterinarianid, petownerid, vaccinationplanid
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING appointmentid, datetime, atype, veterinarianid, petownerid, vaccinationplanid, petid
                 """,
                 (
                     appointment["atype"],
                     slot_datetime,
-                    appointment["vaccinationplanid"],
+                    follow_up_vaccination_plan_id,
                     vet_id,
                     appointment["petownerid"],
+                    selected_pet_id,
                 ),
             )
             follow_up_appointment = cursor.fetchone()
@@ -1384,6 +1870,8 @@ def vet_finalize_appointment(appointment_id):
                 "visit_summary": _vet_serialize_row(saved_summary),
                 "prescription": _vet_serialize_row(created_prescription),
                 "linked_medicines": vet_serialize_records(linked_medicines),
+                "vaccination_record": _vet_serialize_row(created_vaccination_record),
+                "linked_vaccine": _vet_serialize_row(linked_vaccine),
                 "referral": _vet_serialize_row(created_referral),
                 "bill": _vet_serialize_row(created_bill),
             }

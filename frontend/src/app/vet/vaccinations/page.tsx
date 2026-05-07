@@ -9,6 +9,7 @@ import {
   type VetSearchValue,
 } from "../vet_http";
 import LogoutMenuLink from "../logout_menu_link";
+import MicrochipQuickActions from "../dashboard/microchip_quick_actions";
 
 type VetVaccinationProfile = {
   veterinarian_name: string;
@@ -16,11 +17,20 @@ type VetVaccinationProfile = {
 };
 
 type VetVaccinationItem = {
+  recordid: number;
+  planid: number;
   petid: number;
   pet_name: string;
   vaccine_name: string;
   shotdate: string | null;
   nextduedate: string | null;
+  frequency: string | null;
+  batchno: string | null;
+  total_doses: number | null;
+  completed_doses_at_record: number;
+  completed_doses_total: number;
+  remaining_doses: number | null;
+  plan_completed: boolean;
   admin_vet_name: string;
   vaccination_status: string;
 };
@@ -31,7 +41,13 @@ type VetVaccinationDashboardResponse = {
   vaccination_records: VetVaccinationItem[];
 };
 
-type VaccinationStatusFilter = "all" | "overdue" | "due_soon" | "normal" | "unknown";
+type VaccinationStatusFilter =
+  | "all"
+  | "overdue"
+  | "due_soon"
+  | "normal"
+  | "completed"
+  | "unknown";
 
 type VetDashboardPageProps = {
   searchParams?: Promise<{
@@ -46,10 +62,14 @@ const vaccinationStatusFilterOptions: Array<{ value: VaccinationStatusFilter; la
   { value: "overdue", label: "Overdue" },
   { value: "due_soon", label: "Due soon (<=30d)" },
   { value: "normal", label: "Normal" },
+  { value: "completed", label: "Completed plans" },
   { value: "unknown", label: "Unknown" },
 ];
 
 function getVaccinationStatusBucket(status: string): Exclude<VaccinationStatusFilter, "all"> {
+  if (status === "Completed") {
+    return "completed";
+  }
   if (status.startsWith("Overdue")) {
     return "overdue";
   }
@@ -103,6 +123,9 @@ function getVaccinationPillClass(status: string): string {
   }
   if (bucket === "due_soon") {
     return `${styles.pill} ${styles.pillWait}`;
+  }
+  if (bucket === "completed") {
+    return `${styles.pill} ${styles.pillOk}`;
   }
   if (bucket === "unknown") {
     return `${styles.pill} ${styles.pillInfo}`;
@@ -189,8 +212,14 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
   const normalVaccinationCount = allVaccinationRecords.filter(
     (record) => getVaccinationStatusBucket(record.vaccination_status) === "normal"
   ).length;
+  const completedVaccinationCount = allVaccinationRecords.filter(
+    (record) => getVaccinationStatusBucket(record.vaccination_status) === "completed"
+  ).length;
   const unknownVaccinationCount = allVaccinationRecords.filter(
     (record) => getVaccinationStatusBucket(record.vaccination_status) === "unknown"
+  ).length;
+  const missingBatchCount = allVaccinationRecords.filter(
+    (record) => !record.batchno || record.batchno.trim().length === 0
   ).length;
 
   const vaccineSummary = Array.from(
@@ -259,26 +288,17 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                   <div className={styles.value}>{dueSoonVaccinationCount}</div>
                 </div>
                 <div className={styles.kpi}>
-                  <div className={styles.label}>Unknown status</div>
-                  <div className={styles.value}>{unknownVaccinationCount}</div>
+                  <div className={styles.label}>Completed plans</div>
+                  <div className={styles.value}>{completedVaccinationCount}</div>
                 </div>
               </div>
             </section>
 
             <section className={styles.card}>
               <h2 className={styles.quickActionsTitle}>Quick actions</h2>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.block} ${styles.mt1}`}>
-                Open appointments
-              </Link>
-              <Link href={appointmentsHref} className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}>
-                Create visit record
-              </Link>
-              <Link
-                href="/vet/timeline?openReferral=1#create-referral"
-                className={`${styles.btn} ${styles.ghost} ${styles.block} ${styles.mt1}`}
-              >
-                Create referral
-              </Link>
+              <div className={styles.quickActionsList}>
+                <MicrochipQuickActions vetId={selectedVetId} initialNewsCount={0} />
+              </div>
             </section>
 
             <section className={styles.card}>
@@ -290,6 +310,7 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                     <tr>
                       <th>Pet</th>
                       <th>Vaccine</th>
+                      <th>Dose</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -305,6 +326,11 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                         <tr key={`vaccination-preview-${record.pet_name}-${index}`}>
                           <td>{record.pet_name}</td>
                           <td>{record.vaccine_name}</td>
+                          <td>
+                            {record.total_doses && record.total_doses > 0
+                              ? `${record.completed_doses_at_record}/${record.total_doses}`
+                              : `${record.completed_doses_at_record}/-`}
+                          </td>
                           <td>{record.vaccination_status}</td>
                         </tr>
                       ))
@@ -385,6 +411,9 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                 <p className={styles.tileSub}>
                   Normal: {normalVaccinationCount} · Filtered: {filteredVaccinationRecords.length}
                 </p>
+                <p className={styles.tileSub}>
+                  Missing batch no: {missingBatchCount} · Unknown status: {unknownVaccinationCount}
+                </p>
               </div>
             </div>
 
@@ -394,6 +423,10 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                   <tr>
                     <th>Pet</th>
                     <th>Vaccine</th>
+                    <th>Plan</th>
+                    <th>Dose</th>
+                    <th>Batch</th>
+                    <th>Frequency</th>
                     <th>Shot date</th>
                     <th>Next due</th>
                     <th>Status</th>
@@ -404,7 +437,7 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                 <tbody>
                   {filteredVaccinationRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className={styles.emptyCell}>
+                      <td colSpan={11} className={styles.emptyCell}>
                         No vaccination records match selected filters.
                       </td>
                     </tr>
@@ -413,6 +446,14 @@ export default async function VetDashboardPage({ searchParams }: VetDashboardPag
                       <tr key={`${record.petid}-${record.vaccine_name}-${index}`}>
                         <td>{record.pet_name}</td>
                         <td>{record.vaccine_name}</td>
+                        <td>#{record.planid}</td>
+                        <td>
+                          {record.total_doses && record.total_doses > 0
+                            ? `${record.completed_doses_at_record}/${record.total_doses}`
+                            : `${record.completed_doses_at_record}/-`}
+                        </td>
+                        <td>{record.batchno ?? "-"}</td>
+                        <td>{record.frequency ?? "-"}</td>
                         <td>{formatShortDate(record.shotdate)}</td>
                         <td>{formatShortDate(record.nextduedate)}</td>
                         <td>
