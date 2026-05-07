@@ -1563,6 +1563,151 @@ def appointments_cancel():
         conn.close()
 
 
+# ── Visit Summary endpoints ────────────────────────────────────────────────
+
+
+# Load appointment info + vet + branch for the summary header
+@owner_route("/appointments/<int:appointment_id>/detail", methods=["GET"])
+def appointment_detail(appointment_id: int):
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    row = fetch_one(
+        """
+        SELECT a.appointmentID, a.dateTime, a.aType, a.veterinarianID, a.petID,
+               u.name AS veterinarianName, b.name AS branchName,
+               p.name AS petName
+        FROM Appointment a
+        JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
+        JOIN Users u ON u.userID = v.veterinarianID
+        LEFT JOIN Branch b ON b.branchID = v.branchID
+        LEFT JOIN Pet p ON p.petID = a.petID
+        WHERE a.appointmentID = %s AND a.petOwnerID = %s;
+        """,
+        (appointment_id, owner_id),
+    )
+    if row is None:
+        return jsonify({"error": "Appointment not found"}), 404
+    return jsonify(row)
+
+
+# Load visit summary notes
+@owner_route("/appointments/<int:appointment_id>/summary", methods=["GET"])
+def appointment_summary(appointment_id: int):
+    row = fetch_one(
+        """
+        SELECT vs.appointmentID, vs.notes
+        FROM VisitSummary vs
+        WHERE vs.appointmentID = %s;
+        """,
+        (appointment_id,),
+    )
+    return jsonify(row)
+
+
+# Load prescribed medicines for the appointment's vet + pet
+@owner_route("/appointments/<int:appointment_id>/prescriptions", methods=["GET"])
+def appointment_prescriptions(appointment_id: int):
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    # Get vet and pet from the appointment
+    appt = fetch_one(
+        """
+        SELECT a.veterinarianID, a.petID
+        FROM Appointment a
+        WHERE a.appointmentID = %s AND a.petOwnerID = %s;
+        """,
+        (appointment_id, owner_id),
+    )
+    if appt is None:
+        return jsonify([])
+
+    rows = fetch_all(
+        """
+        SELECT p.prescriptionID, p.treatment, p.prescriptionDate,
+               m.medicineID, m.name AS medicineName
+        FROM Prescription p
+        JOIN Prescribes pr ON pr.prescriptionID = p.prescriptionID
+        JOIN Medicine m ON m.medicineID = pr.medicineID
+        WHERE p.veterinarianID = %s AND p.petID = %s
+        ORDER BY p.prescriptionDate DESC;
+        """,
+        (appt["veterinarianid"], appt["petid"]),
+    )
+    return jsonify(rows)
+
+
+# Check if the owner already rated this vet for this appointment date
+@owner_route("/appointments/<int:appointment_id>/rating", methods=["GET"])
+def appointment_rating(appointment_id: int):
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    appt = fetch_one(
+        "SELECT veterinarianID, DATE(dateTime) AS apptDate FROM Appointment WHERE appointmentID = %s AND petOwnerID = %s;",
+        (appointment_id, owner_id),
+    )
+    if appt is None:
+        return jsonify(None)
+
+    rating_row = fetch_one(
+        """
+        SELECT rating FROM Rates
+        WHERE ownerID = %s AND veterinarianID = %s AND date = %s;
+        """,
+        (owner_id, appt["veterinarianid"], appt["apptdate"]),
+    )
+    return jsonify(rating_row)
+
+
+# Submit veterinarian rating
+@owner_route("/appointments/<int:appointment_id>/rate", methods=["POST"])
+def appointment_rate(appointment_id: int):
+    owner_id = get_owner_id()
+    if owner_id is None:
+        return jsonify({"error": "ownerId is required"}), 400
+
+    data = request.get_json() or {}
+    rating = data.get("rating")
+    if rating is None:
+        return jsonify({"error": "rating is required"}), 400
+
+    rating = int(rating)
+    if rating < 0 or rating > 10:
+        return jsonify({"error": "Rating must be between 0 and 10"}), 400
+
+    appt = fetch_one(
+        "SELECT veterinarianID, DATE(dateTime) AS apptDate FROM Appointment WHERE appointmentID = %s AND petOwnerID = %s;",
+        (appointment_id, owner_id),
+    )
+    if appt is None:
+        return jsonify({"error": "Appointment not found"}), 404
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            INSERT INTO Rates (ownerID, veterinarianID, date, rating)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (ownerID, veterinarianID, date) DO UPDATE SET rating = EXCLUDED.rating;
+            """,
+            (owner_id, appt["veterinarianid"], appt["apptdate"], rating),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
 # Add a new pet profile
 @owner_route("/pets", methods=["POST"])
 def add_pet():
