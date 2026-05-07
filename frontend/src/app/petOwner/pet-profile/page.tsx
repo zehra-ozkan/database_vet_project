@@ -449,13 +449,20 @@ function PetProfileContent() {
                     <td colSpan={3} className="muted">No recent appointments.</td>
                   </tr>
                 ) : (
-                  activity.map((appt) => (
-                    <tr key={appt.appointmentid}>
-                      <td>{formatDate(appt.datetime)}</td>
-                      <td>{appt.type}</td>
-                      <td><span className="pill wait">Scheduled</span></td>
-                    </tr>
-                  ))
+                  activity.map((appt) => {
+                    const upcoming = appt.datetime ? new Date(appt.datetime) > new Date() : false;
+                    return (
+                      <tr key={appt.appointmentid}>
+                        <td>{formatDate(appt.datetime)}</td>
+                        <td>{appt.type}</td>
+                        <td>
+                          <span className={`pill ${upcoming ? "wait" : "ok"}`}>
+                            {upcoming ? "Upcoming" : "Completed"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

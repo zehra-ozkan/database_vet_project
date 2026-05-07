@@ -131,6 +131,7 @@ def owner_pets():
             p.species,
             p.breed,
             p.age,
+            p.sex,
             p.isAlive,
             mh.allergies,
             c.chipID
@@ -1263,9 +1264,17 @@ def book_vets():
         conditions.append("v.speciesExpertise ILIKE %s")
         params.append(f"%{species}%")
 
+    # When a date is provided, exclude vets who have already reached their
+    # maxDailyAppointmentLimit on that day.
     if date_str:
-        conditions.append("v.availableDates LIKE %s")
-        params.append(f"%{date_str}%")
+        conditions.append("""(
+            v.maxDailyAppointmentLimit IS NULL
+            OR (SELECT COUNT(*) FROM Appointment a
+                WHERE a.veterinarianID = v.veterinarianID
+                  AND DATE(a.dateTime) = %s
+            ) < v.maxDailyAppointmentLimit
+        )""")
+        params.append(date_str)
 
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -1612,7 +1621,7 @@ def update_pet(pet_id: int):
     cur.execute(
         """
         UPDATE Pet
-        SET name = %s, species = %s, breed = %s, age = %s, isAlive = %s
+        SET name = %s, species = %s, breed = %s, age = %s, sex = %s, isAlive = %s
         WHERE petID = %s AND ownerID = %s
         RETURNING petID;
         """,
@@ -1621,6 +1630,7 @@ def update_pet(pet_id: int):
             data["species"],
             data["breed"],
             data["age"],
+            data.get("sex") or "F",
             data["isAlive"],
             pet_id,
             data["ownerId"],
