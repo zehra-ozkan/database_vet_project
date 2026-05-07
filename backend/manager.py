@@ -55,15 +55,20 @@ def money_sum_expression():
     return "COALESCE(consultationFee, 0) + COALESCE(treatmentCost, 0) + COALESCE(medicationCost, 0)"
 
 
+def active_medicine_condition(alias="m"):
+    return f"{alias}.status = 'safe' AND ({alias}.expiracyDate IS NULL OR {alias}.expiracyDate >= CURRENT_DATE)"
+
+
 @manager_bp.route("/api/manager/dashboard/summary", methods=["GET"])
 def dashboard_summary():
     total_expr = money_sum_expression()
+    active_medicine = active_medicine_condition("m")
     summary = fetch_one(
         f"""
         SELECT
-            (SELECT COUNT(*) FROM Medicine WHERE quantity <= COALESCE(threshold, 0)) AS lowStockCount,
-            (SELECT COUNT(*) FROM Medicine WHERE quantity <= COALESCE(threshold, 0)) AS lowStockItems,
-            (SELECT COUNT(*) FROM Medicine WHERE status IN ('expired', 'damaged')) AS expiredDamagedItems,
+            (SELECT COUNT(*) FROM Medicine m WHERE m.quantity <= COALESCE(m.threshold, 0) AND {active_medicine}) AS lowStockCount,
+            (SELECT COUNT(*) FROM Medicine m WHERE m.quantity <= COALESCE(m.threshold, 0) AND {active_medicine}) AS lowStockItems,
+            (SELECT COUNT(*) FROM Medicine WHERE status IN ('expired', 'damaged') OR expiracyDate < CURRENT_DATE) AS expiredDamagedItems,
             (SELECT COUNT(*) FROM VaccinationRecord WHERE nextDueDate < CURRENT_DATE) AS overdueVaccinations,
             (SELECT COUNT(*) FROM WasteLog) AS wastedInventory,
             (SELECT COUNT(*) FROM Prescribes) AS stockConsumption,
@@ -88,12 +93,14 @@ def dashboard_summary():
 @manager_bp.route("/api/manager/dashboard/alerts", methods=["GET"])
 def dashboard_alerts():
     total_expr = money_sum_expression()
+    active_medicine = active_medicine_condition("m")
     low_stock = fetch_all(
-        """
+        f"""
         SELECT m.medicineID, m.name, m.quantity, m.threshold, b.name AS branch
         FROM Medicine m
         JOIN Branch b ON b.branchID = m.branchID
         WHERE m.quantity <= COALESCE(m.threshold, 0)
+            AND {active_medicine}
         ORDER BY m.quantity ASC, m.name ASC
         LIMIT 5
         """
@@ -124,8 +131,9 @@ def dashboard_alerts():
 
 @manager_bp.route("/api/manager/dashboard/low-stock-preview", methods=["GET"])
 def low_stock_preview():
+    active_medicine = active_medicine_condition("m")
     rows = fetch_all(
-        """
+        f"""
         SELECT
             m.medicineID,
             m.name,
@@ -138,6 +146,7 @@ def low_stock_preview():
         FROM Medicine m
         JOIN Branch b ON b.branchID = m.branchID
         WHERE m.quantity <= COALESCE(m.threshold, 0)
+            AND {active_medicine}
         ORDER BY m.quantity ASC, m.name ASC
         LIMIT 8
         """
@@ -228,7 +237,7 @@ def inventory():
         clauses.append("m.category::text = %s")
         params.append(category)
     if status == "low_stock":
-        clauses.append("m.quantity <= COALESCE(m.threshold, 0)")
+        clauses.append(f"m.quantity <= COALESCE(m.threshold, 0) AND {active_medicine_condition('m')}")
     elif status:
         clauses.append("m.status::text = %s")
         params.append(status)
@@ -414,21 +423,54 @@ def update_medicine_supply():
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
-        """
-        UPDATE Medicine
-        SET quantity = COALESCE(quantity, 0) + %s,
-            expiracyDate = %s,
-            status = 'safe'
-        WHERE medicineID = %s AND branchID = %s
-        RETURNING medicineID, branchID, name, quantity, expiracyDate AS expiryDate, status::text AS status
-        """,
-        (quantity, expiration_date, medicine_id, branch_id),
-    )
-    row = cur.fetchone()
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute("SELECT %s::date < CURRENT_DATE AS is_expired", (expiration_date,))
+        is_expired_supply = cur.fetchone()["is_expired"]
+        if is_expired_supply:
+            cur.execute(
+                """
+                SELECT medicineID, branchID, name, quantity, expiracyDate AS expiryDate, status::text AS status
+                FROM Medicine
+                WHERE medicineID = %s AND branchID = %s
+                """,
+                (medicine_id, branch_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                conn.rollback()
+                return jsonify({"error": "Medicine not found for selected branch"}), 404
+            cur.execute(
+                """
+                INSERT INTO WasteLog (medicineID, notes)
+                VALUES (%s, %s)
+                """,
+                (medicine_id, f"Expired supply entry rejected on {expiration_date}; quantity not added."),
+            )
+            conn.commit()
+            return jsonify({key: serialize_value(value) for key, value in dict(row).items()})
+
+        cur.execute(
+            """
+            UPDATE Medicine
+            SET quantity = COALESCE(quantity, 0) + %s,
+                expiracyDate = %s,
+                status = 'safe'
+            WHERE medicineID = %s AND branchID = %s
+            RETURNING medicineID, branchID, name, quantity, expiracyDate AS expiryDate, status::text AS status
+            """,
+            (quantity, expiration_date, medicine_id, branch_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            conn.rollback()
+            return jsonify({"error": "Medicine not found for selected branch"}), 404
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
     if row is None:
         return jsonify({"error": "Medicine not found for selected branch"}), 404
     return jsonify({key: serialize_value(value) for key, value in dict(row).items()})
@@ -760,14 +802,16 @@ def stock_consumption_report():
     rows = fetch_all(
         """
         SELECT
+            m.medicineID,
+            m.name AS medicineName,
             b.name AS branch,
-            COUNT(pr.medicineID) AS prescribedItems,
-            COALESCE(SUM(m.quantity), 0) AS remainingStock
-        FROM Branch b
-        LEFT JOIN Medicine m ON m.branchID = b.branchID
+            COUNT(p.prescriptionID) AS prescribedCount
+        FROM Medicine m
+        JOIN Branch b ON b.branchID = m.branchID
         LEFT JOIN Prescribes pr ON pr.medicineID = m.medicineID
-        GROUP BY b.branchID, b.name
-        ORDER BY b.name
+        LEFT JOIN Prescription p ON p.prescriptionID = pr.prescriptionID
+        GROUP BY m.medicineID, m.name, b.name
+        ORDER BY prescribedCount DESC, m.name ASC
         """
     )
     return jsonify(rows)
@@ -778,15 +822,112 @@ def waste_statistics_report():
     rows = fetch_all(
         """
         SELECT
+            m.medicineID,
+            m.name AS medicineName,
             b.name AS branch,
-            COUNT(wl.wasteLogID) AS wasteEntries,
-            COUNT(*) FILTER (WHERE m.status = 'damaged') AS damagedItems,
-            COUNT(*) FILTER (WHERE m.status = 'expired') AS expiredItems
+            COUNT(wl.wasteLogID) AS wasteLogCount,
+            COUNT(wl.wasteLogID) FILTER (WHERE POSITION('expired supply entry rejected' IN LOWER(wl.notes)) > 0) AS expiredSupplyRejected
+        FROM Medicine m
+        JOIN Branch b ON b.branchID = m.branchID
+        LEFT JOIN WasteLog wl ON wl.medicineID = m.medicineID
+        GROUP BY m.medicineID, m.name, b.name
+        ORDER BY wasteLogCount DESC, m.name ASC
+        """
+    )
+    return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/reports/restock-frequency", methods=["GET"])
+def restock_frequency_report():
+    active_medicine = active_medicine_condition("m")
+    rows = fetch_all(
+        f"""
+        SELECT
+            m.medicineID,
+            m.name AS medicineName,
+            b.name AS branch,
+            CASE WHEN {active_medicine} AND COALESCE(m.quantity, 0) > 0 THEN 1 ELSE 0 END AS successfulStockIncreases,
+            COALESCE(m.quantity, 0) AS currentQuantity
+        FROM Medicine m
+        JOIN Branch b ON b.branchID = m.branchID
+        ORDER BY successfulStockIncreases DESC, m.name ASC
+        """
+    )
+    return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/reports/cost-breakdown", methods=["GET"])
+def cost_breakdown_report():
+    active_medicine = active_medicine_condition("m")
+    rows = fetch_all(
+        f"""
+        SELECT
+            b.branchID,
+            b.name AS branch,
+            COALESCE(SUM(m.quantity) FILTER (WHERE {active_medicine}), 0) AS estimatedInventoryUnits
         FROM Branch b
         LEFT JOIN Medicine m ON m.branchID = b.branchID
-        LEFT JOIN WasteLog wl ON wl.medicineID = m.medicineID
         GROUP BY b.branchID, b.name
-        ORDER BY b.name
+        ORDER BY b.name ASC
+        """
+    )
+    return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/reports/vaccination-compliance", methods=["GET"])
+def vaccination_compliance_report():
+    rows = fetch_all(
+        """
+        SELECT
+            COALESCE(p.species, 'Unknown') AS species,
+            COALESCE(p.breed, 'Unknown') AS breed,
+            COUNT(DISTINCT p.petID) AS totalPets,
+            COUNT(DISTINCT p.petID) FILTER (
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM VaccinationRecord vr
+                    WHERE vr.petID = p.petID
+                      AND vr.nextDueDate >= CURRENT_DATE
+                )
+            ) AS compliantPets,
+            CASE
+                WHEN COUNT(DISTINCT p.petID) = 0 THEN 0
+                ELSE ROUND(
+                    (
+                        COUNT(DISTINCT p.petID) FILTER (
+                            WHERE EXISTS (
+                                SELECT 1
+                                FROM VaccinationRecord vr
+                                WHERE vr.petID = p.petID
+                                  AND vr.nextDueDate >= CURRENT_DATE
+                            )
+                        )::numeric / COUNT(DISTINCT p.petID)::numeric
+                    ) * 100,
+                    1
+                )
+            END AS complianceRate
+        FROM Pet p
+        GROUP BY COALESCE(p.species, 'Unknown'), COALESCE(p.breed, 'Unknown')
+        ORDER BY complianceRate DESC, species ASC, breed ASC
+        """
+    )
+    return jsonify(rows)
+
+
+@manager_bp.route("/api/manager/reports/most-administered-vaccines", methods=["GET"])
+def most_administered_vaccines_report():
+    rows = fetch_all(
+        """
+        SELECT
+            vac.vaccineID,
+            COALESCE(m.name, vac.type, 'Unknown vaccine') AS vaccineName,
+            COUNT(i.recordID) AS administrationCount
+        FROM Vaccine vac
+        LEFT JOIN Medicine m ON m.medicineID = vac.vaccineID
+        LEFT JOIN Involves i ON i.vaccineID = vac.vaccineID
+        LEFT JOIN VaccinationRecord vr ON vr.recordID = i.recordID
+        GROUP BY vac.vaccineID, COALESCE(m.name, vac.type, 'Unknown vaccine')
+        ORDER BY administrationCount DESC, vaccineName ASC
         """
     )
     return jsonify(rows)
@@ -794,30 +935,22 @@ def waste_statistics_report():
 
 @manager_bp.route("/api/manager/reports/vaccination-overdue-rate", methods=["GET"])
 def vaccination_overdue_rate_report():
-    row = fetch_one(
+    rows = fetch_all(
         """
         SELECT
-            COUNT(*) AS totalRecords,
-            COUNT(*) FILTER (WHERE nextDueDate < CURRENT_DATE) AS overdueRecords,
+            b.branchID,
+            b.name AS branch,
+            COUNT(vp.planID) AS totalPlans,
+            COUNT(vp.planID) FILTER (WHERE vp.nextVaccinationDate < CURRENT_DATE) AS overduePlans,
             CASE
-                WHEN COUNT(*) = 0 THEN 0
-                ELSE ROUND((COUNT(*) FILTER (WHERE nextDueDate < CURRENT_DATE)::numeric / COUNT(*)::numeric) * 100, 1)
+                WHEN COUNT(vp.planID) = 0 THEN 0
+                ELSE ROUND((COUNT(vp.planID) FILTER (WHERE vp.nextVaccinationDate < CURRENT_DATE)::numeric / COUNT(vp.planID)::numeric) * 100, 1)
             END AS overdueRate
-        FROM VaccinationRecord
+        FROM Branch b
+        LEFT JOIN Veterinarian v ON v.branchID = b.branchID
+        LEFT JOIN VaccinationPlan vp ON vp.veterinarianID = v.veterinarianID
+        GROUP BY b.branchID, b.name
+        ORDER BY overdueRate DESC, b.name ASC
         """
     )
-    return jsonify(row)
-
-
-@manager_bp.route("/api/manager/reports/cost-breakdown", methods=["GET"])
-def cost_breakdown_report():
-    row = fetch_one(
-        """
-        SELECT
-            COALESCE(SUM(consultationFee), 0) AS consultationFees,
-            COALESCE(SUM(treatmentCost), 0) AS treatmentCosts,
-            COALESCE(SUM(medicationCost), 0) AS medicationCosts
-        FROM Bill
-        """
-    )
-    return jsonify(row)
+    return jsonify(rows)

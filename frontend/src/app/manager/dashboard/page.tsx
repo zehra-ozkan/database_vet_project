@@ -5,7 +5,16 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import StatusBadge from "@/components/manager/StatusBadge";
 import { apiGet, formatDate, formatMoney } from "@/lib/api";
-import type { BillingSummary, DashboardAlerts, DashboardSummary, VaccinationRow } from "@/types/manager";
+import type {
+  BillingSummary,
+  CostBreakdownReportRow,
+  DashboardAlerts,
+  DashboardSummary,
+  RestockFrequencyReportRow,
+  StockConsumptionReportRow,
+  VaccinationRow,
+  WasteStatisticsReportRow,
+} from "@/types/manager";
 
 type ReportRow = {
   report: string;
@@ -20,6 +29,10 @@ export default function ManagerDashboardPage() {
   const [alerts, setAlerts] = useState<DashboardAlerts | null>(null);
   const [vaccinations, setVaccinations] = useState<VaccinationRow[]>([]);
   const [billing, setBilling] = useState<BillingSummary | null>(null);
+  const [stockConsumptionReport, setStockConsumptionReport] = useState<StockConsumptionReportRow[]>([]);
+  const [wasteStatisticsReport, setWasteStatisticsReport] = useState<WasteStatisticsReportRow[]>([]);
+  const [restockFrequencyReport, setRestockFrequencyReport] = useState<RestockFrequencyReportRow[]>([]);
+  const [costBreakdownReport, setCostBreakdownReport] = useState<CostBreakdownReportRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -28,11 +41,15 @@ export default function ManagerDashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [summaryData, alertData, vaccinationData, billingData] = await Promise.all([
+        const [summaryData, alertData, vaccinationData, billingData, stockReportData, wasteReportData, restockReportData, costReportData] = await Promise.all([
           apiGet<DashboardSummary>("/manager/dashboard/summary"),
           apiGet<DashboardAlerts>("/manager/dashboard/alerts"),
           apiGet<VaccinationRow[]>("/manager/vaccinations"),
           apiGet<BillingSummary>("/manager/billing/summary"),
+          apiGet<StockConsumptionReportRow[]>("/manager/reports/stock-consumption"),
+          apiGet<WasteStatisticsReportRow[]>("/manager/reports/waste-statistics"),
+          apiGet<RestockFrequencyReportRow[]>("/manager/reports/restock-frequency"),
+          apiGet<CostBreakdownReportRow[]>("/manager/reports/cost-breakdown"),
         ]);
 
         if (!active) return;
@@ -40,6 +57,10 @@ export default function ManagerDashboardPage() {
         setAlerts(alertData);
         setVaccinations(vaccinationData);
         setBilling(billingData);
+        setStockConsumptionReport(stockReportData);
+        setWasteStatisticsReport(wasteReportData);
+        setRestockFrequencyReport(restockReportData);
+        setCostBreakdownReport(costReportData);
         setError("");
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : "Could not load dashboard");
@@ -110,6 +131,12 @@ export default function ManagerDashboardPage() {
   const overdueText = formatVaccinationAlert(alerts?.vaccinations, overdueVaccinationCount);
   const policyOwner = vaccinations.find((row) => row.recommendedvet)?.recommendedvet || "No data";
   const planCoverage = formatPlanCoverage(summary);
+  const topConsumedMedicine = stockConsumptionReport[0];
+  const totalPrescribed = stockConsumptionReport.reduce((total, row) => total + Number(row.prescribedcount || 0), 0);
+  const totalWasteLogs = wasteStatisticsReport.reduce((total, row) => total + Number(row.wastelogcount || 0), 0);
+  const expiredSupplyRejected = wasteStatisticsReport.reduce((total, row) => total + Number(row.expiredsupplyrejected || 0), 0);
+  const successfulStockIncreases = restockFrequencyReport.reduce((total, row) => total + Number(row.successfulstockincreases || 0), 0);
+  const estimatedInventoryUnits = costBreakdownReport.reduce((total, row) => total + Number(row.estimatedinventoryunits || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -144,6 +171,39 @@ export default function ManagerDashboardPage() {
         <div className="mt-5 space-y-3">
           <AlertRow label="Low stock" text={lowStockText} />
           <AlertRow label="Vaccination overdue" text={overdueText} />
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
+        <h2 className="text-xl font-black text-slate-800">Inventory Reports</h2>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard title="Stock consumption" value={`${totalPrescribed} prescribed`} />
+          <InfoCard title="Waste statistics" value={`${totalWasteLogs} waste logs`} />
+          <InfoCard title="Restock frequency" value={`${successfulStockIncreases} increases`} />
+          <InfoCard title="Cost breakdown" value={`${estimatedInventoryUnits} units`} />
+        </div>
+        <div className="mt-5 overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="text-xs uppercase tracking-[0.18em] text-slate-400">
+              <tr className="border-b border-slate-100">
+                <TableHead>Report</TableHead>
+                <TableHead>Metric</TableHead>
+                <TableHead>Detail</TableHead>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-600">
+              <tr>
+                <TableCell strong>Top consumed medicine</TableCell>
+                <TableCell>{topConsumedMedicine ? `${topConsumedMedicine.prescribedcount} prescribed` : "No data"}</TableCell>
+                <TableCell>{topConsumedMedicine ? `${topConsumedMedicine.medicinename} at ${topConsumedMedicine.branch}` : "No prescription usage found"}</TableCell>
+              </tr>
+              <tr>
+                <TableCell strong>Expired supply rejected</TableCell>
+                <TableCell>{expiredSupplyRejected}</TableCell>
+                <TableCell>WasteLog entries created from rejected expired supply</TableCell>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

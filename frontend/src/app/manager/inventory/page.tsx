@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import DataTable from "@/components/manager/DataTable";
 import { FilterSelect } from "@/components/manager/FilterBar";
 import Topbar from "@/components/manager/Topbar";
 import { apiGet, apiSend, formatDate } from "@/lib/api";
-import type { InventoryItem, WasteLog } from "@/types/manager";
+import type { CostBreakdownReportRow, InventoryItem, RestockFrequencyReportRow, StockConsumptionReportRow, WasteLog, WasteStatisticsReportRow } from "@/types/manager";
 
 type ClinicBranch = {
   branchid: number;
@@ -42,6 +43,10 @@ export default function InventoryPage() {
   const [branches, setBranches] = useState<ClinicBranch[]>([]);
   const [medicineNames, setMedicineNames] = useState<MedicineName[]>([]);
   const [wasteLogs, setWasteLogs] = useState<WasteLog[]>([]);
+  const [stockConsumption, setStockConsumption] = useState<StockConsumptionReportRow[]>([]);
+  const [wasteStatistics, setWasteStatistics] = useState<WasteStatisticsReportRow[]>([]);
+  const [restockFrequency, setRestockFrequency] = useState<RestockFrequencyReportRow[]>([]);
+  const [costBreakdown, setCostBreakdown] = useState<CostBreakdownReportRow[]>([]);
   const [filters, setFilters] = useState({ branch: "", name: "", category: "", expiry: "" });
   const [supplyForm, setSupplyForm] = useState<SupplyForm>({ branchID: "", medicineID: "", batchNumber: "", quantity: "", unitCost: "", expirationDate: "" });
   const [thresholdForm, setThresholdForm] = useState<ThresholdForm>({ branchID: "", medicineID: "", threshold: "" });
@@ -82,8 +87,27 @@ export default function InventoryPage() {
     if (active) setCatalogItems(data);
   }
 
+  async function loadReports(active = true) {
+    try {
+      const [stockData, wasteData, restockData, costData] = await Promise.all([
+        apiGet<StockConsumptionReportRow[]>("/manager/reports/stock-consumption"),
+        apiGet<WasteStatisticsReportRow[]>("/manager/reports/waste-statistics"),
+        apiGet<RestockFrequencyReportRow[]>("/manager/reports/restock-frequency"),
+        apiGet<CostBreakdownReportRow[]>("/manager/reports/cost-breakdown"),
+      ]);
+      if (active) {
+        setStockConsumption(stockData);
+        setWasteStatistics(wasteData);
+        setRestockFrequency(restockData);
+        setCostBreakdown(costData);
+      }
+    } catch (err) {
+      if (active) setError(err instanceof Error ? err.message : "Could not load inventory reports");
+    }
+  }
+
   async function refreshData() {
-    await Promise.all([loadInventory(), loadWasteLogs(), loadCatalog()]);
+    await Promise.all([loadInventory(), loadWasteLogs(), loadCatalog(), loadReports()]);
   }
 
   useEffect(() => {
@@ -91,11 +115,15 @@ export default function InventoryPage() {
 
     async function loadInitialData() {
       try {
-        const [inventoryData, wasteData, branchData, medicineNameData] = await Promise.all([
+        const [inventoryData, wasteData, branchData, medicineNameData, stockData, wasteReportData, restockData, costData] = await Promise.all([
           apiGet<InventoryItem[]>("/manager/inventory"),
           apiGet<WasteLog[]>("/manager/wastelog"),
           apiGet<ClinicBranch[]>("/manager/branches"),
           apiGet<MedicineName[]>("/manager/medicine-names"),
+          apiGet<StockConsumptionReportRow[]>("/manager/reports/stock-consumption"),
+          apiGet<WasteStatisticsReportRow[]>("/manager/reports/waste-statistics"),
+          apiGet<RestockFrequencyReportRow[]>("/manager/reports/restock-frequency"),
+          apiGet<CostBreakdownReportRow[]>("/manager/reports/cost-breakdown"),
         ]);
         if (active) {
           startTransition(() => {
@@ -104,6 +132,10 @@ export default function InventoryPage() {
             setWasteLogs(wasteData);
             setBranches(branchData);
             setMedicineNames(medicineNameData);
+            setStockConsumption(stockData);
+            setWasteStatistics(wasteReportData);
+            setRestockFrequency(restockData);
+            setCostBreakdown(costData);
             setError("");
             setLoading(false);
           });
@@ -191,36 +223,44 @@ export default function InventoryPage() {
 
       <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <FilterSelect value={filters.branch} onChange={(e) => setFilters({ ...filters, branch: e.target.value })}>
-            <option value="">All clinics</option>
-            {branches.map((branch) => (
-              <option key={branch.branchid} value={branch.branchid}>
-                {branch.name}
-              </option>
-            ))}
-          </FilterSelect>
-          <FilterSelect aria-label="Medicine name" value={filters.name} onChange={(e) => setFilters({ ...filters, name: e.target.value })}>
-            <option value="">All medicines</option>
-            {medicineNames.map((medicine) => (
-              <option key={medicine.name} value={medicine.name}>
-                {medicine.name}
-              </option>
-            ))}
-          </FilterSelect>
-          <FilterSelect value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
-            <option value="">All categories</option>
-            <option value="antibiotic">Antibiotic</option>
-            <option value="analgesic">Analgesic</option>
-            <option value="vaccine">Vaccine</option>
-            <option value="other">Other</option>
-          </FilterSelect>
-          <FilterSelect aria-label="Expiration status" value={filters.expiry} onChange={(e) => setFilters({ ...filters, expiry: e.target.value })}>
-            <option value="">All</option>
-            <option value="valid">Valid</option>
-            <option value="expired">Expired</option>
-            <option value="soon">Expires within 30 days</option>
-          </FilterSelect>
-          <button onClick={applyFilters} className="rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white">
+          <LabeledField label="Branch">
+            <FilterSelect value={filters.branch} onChange={(e) => setFilters({ ...filters, branch: e.target.value })}>
+              <option value="">All clinics</option>
+              {branches.map((branch) => (
+                <option key={branch.branchid} value={branch.branchid}>
+                  {branch.name}
+                </option>
+              ))}
+            </FilterSelect>
+          </LabeledField>
+          <LabeledField label="Medicine">
+            <FilterSelect aria-label="Medicine name" value={filters.name} onChange={(e) => setFilters({ ...filters, name: e.target.value })}>
+              <option value="">All medicines</option>
+              {medicineNames.map((medicine) => (
+                <option key={medicine.name} value={medicine.name}>
+                  {medicine.name}
+                </option>
+              ))}
+            </FilterSelect>
+          </LabeledField>
+          <LabeledField label="Category">
+            <FilterSelect value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
+              <option value="">All categories</option>
+              <option value="antibiotic">Antibiotic</option>
+              <option value="analgesic">Analgesic</option>
+              <option value="vaccine">Vaccine</option>
+              <option value="other">Other</option>
+            </FilterSelect>
+          </LabeledField>
+          <LabeledField label="Expiration status">
+            <FilterSelect aria-label="Expiration status" value={filters.expiry} onChange={(e) => setFilters({ ...filters, expiry: e.target.value })}>
+              <option value="">All</option>
+              <option value="valid">Valid</option>
+              <option value="expired">Expired</option>
+              <option value="soon">Expires within 30 days</option>
+            </FilterSelect>
+          </LabeledField>
+          <button onClick={applyFilters} className="self-end rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white">
             Apply
           </button>
         </div>
@@ -244,14 +284,26 @@ export default function InventoryPage() {
 
       <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
         <h2 className="text-xl font-black text-slate-800">Log supply</h2>
-        <form onSubmit={submitSupply} className="mt-5 grid gap-4 md:grid-cols-3">
-          <BranchSelect value={supplyForm.branchID} branches={branches} onChange={(branchID) => setSupplyForm({ ...supplyForm, branchID, medicineID: "" })} />
-          <MedicineSelect value={supplyForm.medicineID} medicines={medicinesForSupply} onChange={(medicineID) => setSupplyForm({ ...supplyForm, medicineID })} />
-          <FormInput placeholder="Batch number" value={supplyForm.batchNumber} onChange={(batchNumber) => setSupplyForm({ ...supplyForm, batchNumber })} />
-          <FormInput type="number" min="1" placeholder="Quantity" required value={supplyForm.quantity} onChange={(quantity) => setSupplyForm({ ...supplyForm, quantity })} />
-          <FormInput type="number" min="0" step="0.01" placeholder="Unit cost" value={supplyForm.unitCost} onChange={(unitCost) => setSupplyForm({ ...supplyForm, unitCost })} />
-          <FormInput type="date" required value={supplyForm.expirationDate} onChange={(expirationDate) => setSupplyForm({ ...supplyForm, expirationDate })} />
-          <button className="rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white md:col-span-3">Log supply</button>
+        <form onSubmit={submitSupply} className="mt-5 grid gap-4 md:grid-cols-2">
+          <LabeledField label="Branch">
+            <BranchSelect value={supplyForm.branchID} branches={branches} onChange={(branchID) => setSupplyForm({ ...supplyForm, branchID, medicineID: "" })} />
+          </LabeledField>
+          <LabeledField label="Medicine / Item">
+            <MedicineSelect value={supplyForm.medicineID} medicines={medicinesForSupply} onChange={(medicineID) => setSupplyForm({ ...supplyForm, medicineID })} />
+          </LabeledField>
+          <LabeledField label="Batch number">
+            <FormInput placeholder="Batch number" value={supplyForm.batchNumber} onChange={(batchNumber) => setSupplyForm({ ...supplyForm, batchNumber })} />
+          </LabeledField>
+          <LabeledField label="Quantity">
+            <FormInput type="number" min="1" placeholder="Quantity" required value={supplyForm.quantity} onChange={(quantity) => setSupplyForm({ ...supplyForm, quantity })} />
+          </LabeledField>
+          <LabeledField label="Unit cost ($)" className="md:col-span-2">
+            <FormInput type="number" min="0" step="0.01" placeholder="Unit cost" value={supplyForm.unitCost} onChange={(unitCost) => setSupplyForm({ ...supplyForm, unitCost })} />
+          </LabeledField>
+          <LabeledField label="Expiration date" className="md:col-span-2">
+            <FormInput type="date" required value={supplyForm.expirationDate} onChange={(expirationDate) => setSupplyForm({ ...supplyForm, expirationDate })} />
+          </LabeledField>
+          <button className="rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white md:col-span-2">Log supply</button>
         </form>
       </section>
 
@@ -260,10 +312,16 @@ export default function InventoryPage() {
 
         <h3 className="mt-5 text-sm font-black uppercase tracking-[0.18em] text-slate-400">Set minimum threshold</h3>
         <form onSubmit={submitThreshold} className="mt-5 grid gap-4 md:grid-cols-4">
-          <BranchSelect value={thresholdForm.branchID} branches={branches} onChange={(branchID) => setThresholdForm({ ...thresholdForm, branchID, medicineID: "" })} />
-          <MedicineSelect value={thresholdForm.medicineID} medicines={medicinesForThreshold} onChange={(medicineID) => setThresholdForm({ ...thresholdForm, medicineID })} />
-          <FormInput type="number" min="0" placeholder="Minimum quantity" required value={thresholdForm.threshold} onChange={(threshold) => setThresholdForm({ ...thresholdForm, threshold })} />
-          <button className="rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white">Update threshold</button>
+          <LabeledField label="Branch">
+            <BranchSelect value={thresholdForm.branchID} branches={branches} onChange={(branchID) => setThresholdForm({ ...thresholdForm, branchID, medicineID: "" })} />
+          </LabeledField>
+          <LabeledField label="Medicine">
+            <MedicineSelect value={thresholdForm.medicineID} medicines={medicinesForThreshold} onChange={(medicineID) => setThresholdForm({ ...thresholdForm, medicineID })} />
+          </LabeledField>
+          <LabeledField label="Minimum quantity">
+            <FormInput type="number" min="0" placeholder="Minimum quantity" required value={thresholdForm.threshold} onChange={(threshold) => setThresholdForm({ ...thresholdForm, threshold })} />
+          </LabeledField>
+          <button className="self-end rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white">Update threshold</button>
         </form>
 
         <div className="mt-6">
@@ -298,6 +356,61 @@ export default function InventoryPage() {
           <button className="rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white md:col-span-2">Insert waste log</button>
         </form>
       </section>
+
+      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
+        <h2 className="text-xl font-black text-slate-800">Inventory Reports</h2>
+        <div className="mt-5 space-y-5">
+          <ReportPanel title="Stock consumption">
+            <DataTable
+              rows={stockConsumption}
+              emptyMessage="No prescription usage found."
+              tableClassName="min-w-full"
+              columns={[
+                { header: "Medicine", cell: (row) => <span className="font-bold text-slate-800">{row.medicinename}</span> },
+                { header: "Branch", cell: (row) => row.branch },
+                { header: "Prescribed", cell: (row) => row.prescribedcount },
+              ]}
+            />
+          </ReportPanel>
+          <ReportPanel title="Waste statistics">
+            <DataTable
+              rows={wasteStatistics}
+              emptyMessage="No waste entries found."
+              tableClassName="min-w-full"
+              columns={[
+                { header: "Medicine", cell: (row) => <span className="font-bold text-slate-800">{row.medicinename}</span> },
+                { header: "Branch", cell: (row) => row.branch },
+                { header: "Waste logs", cell: (row) => row.wastelogcount },
+                { header: "Expired supply", cell: (row) => row.expiredsupplyrejected },
+              ]}
+            />
+          </ReportPanel>
+          <ReportPanel title="Restock frequency">
+            <DataTable
+              rows={restockFrequency}
+              emptyMessage="No stock increases found."
+              tableClassName="min-w-full"
+              columns={[
+                { header: "Medicine", cell: (row) => <span className="font-bold text-slate-800">{row.medicinename}</span> },
+                { header: "Branch", cell: (row) => row.branch },
+                { header: "Successful increases", cell: (row) => row.successfulstockincreases },
+                { header: "Current qty", cell: (row) => row.currentquantity },
+              ]}
+            />
+          </ReportPanel>
+          <ReportPanel title="Cost breakdown per branch">
+            <DataTable
+              rows={costBreakdown}
+              emptyMessage="No branch inventory found."
+              tableClassName="min-w-full"
+              columns={[
+                { header: "Branch", cell: (row) => <span className="font-bold text-slate-800">{row.branch}</span> },
+                { header: "Estimated inventory units", cell: (row) => row.estimatedinventoryunits },
+              ]}
+            />
+          </ReportPanel>
+        </div>
+      </section>
     </div>
   );
 }
@@ -314,10 +427,47 @@ function isLowStock(item: InventoryItem) {
   return Number(item.quantity) <= Number(item.threshold);
 }
 
+function todayDateKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isExpired(item: InventoryItem) {
+  const expiryDate = item.expirydate?.slice(0, 10);
+  return Boolean(expiryDate && expiryDate < todayDateKey());
+}
+
 function StockStatus({ item }: { item: InventoryItem }) {
-  const label = isLowStock(item) ? "Low" : "OK";
-  const tone = isLowStock(item) ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  const expired = isExpired(item);
+  const lowStock = isLowStock(item);
+  const label = expired ? "Expired" : lowStock ? "Low" : "OK";
+  const tone = expired
+    ? "bg-rose-50 text-rose-700 border-rose-200"
+    : lowStock
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : "bg-emerald-50 text-emerald-700 border-emerald-200";
   return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{label}</span>;
+}
+
+function LabeledField({ label, className = "", children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <label className={`grid gap-1.5 ${className}`}>
+      <span className="text-xs font-bold text-slate-800">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function ReportPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-3 rounded-3xl bg-slate-50/70 p-4">
+      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">{title}</h3>
+      {children}
+    </div>
+  );
 }
 
 function BranchSelect({ value, branches, onChange }: { value: string; branches: ClinicBranch[]; onChange: (value: string) => void }) {

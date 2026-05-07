@@ -116,7 +116,7 @@ export default function PetProfilePage() {
       const [detailData, vaccinationRows, activityRows] = await Promise.all([
         apiGet<PetDetailResponse>(`/petOwner/pet/${petID}`, { ownerId }),
         apiGet<VaccinationRow[]>(`/petOwner/pet/${petID}/vaccinations`, { ownerId }),
-        apiGet<ActivityRow[]>("/petOwner/recent-activity", { ownerId }),
+        apiGet<ActivityRow[]>(`/petOwner/pet/${petID}/activity`, { ownerId }),
       ]);
       setDetail(detailData);
       setVaccinations(vaccinationRows);
@@ -212,7 +212,8 @@ export default function PetProfilePage() {
   };
 
   const pet = detail?.pet;
-  const latestActivity = activity[0] ?? null;
+  const primaryClinic = detail?.primaryClinic ?? null;
+  const lastVisit = detail?.lastVisit ?? null;
   const branchOptions = getUniqueBranches(recommendedVets);
   const visibleVets = booking.branchID ? recommendedVets.filter((vet) => String(vet.branchid) === booking.branchID) : recommendedVets;
   const availableSlots = TIME_SLOTS.filter((slot) => !isSlotOccupied(slot, occupiedAppointments));
@@ -255,12 +256,12 @@ export default function PetProfilePage() {
                   Profile Details
                 </h2>
                 <DetailRow label="Allergies" value={pet.allergies ?? "No data"} />
-                <DetailRow label="Primary clinic" value={latestActivity?.branchname ?? "No clinic visits yet"} />
+                <DetailRow label="Primary clinic" value={primaryClinic?.branchname ?? "No clinic visits yet"} />
                 <DetailRow
                   label="Last visit"
                   value={
-                    latestActivity?.datetime
-                      ? `${formatDate(latestActivity.datetime)} · ${latestActivity.notes ?? "No notes"}`
+                    lastVisit?.datetime
+                      ? `${formatDate(lastVisit.datetime)} · ${lastVisit.notes ?? "No notes"}`
                       : "No visits yet"
                   }
                 />
