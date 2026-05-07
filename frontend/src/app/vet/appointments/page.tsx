@@ -37,6 +37,7 @@ type VetIncomingReferralItem = {
   referrer_branch_name: string;
   inferred_owner_id: number | null;
   inferred_owner_name: string | null;
+  inferred_pet_id: number | null;
   inferred_vaccination_plan_id: number | null;
   inferred_appointment_type: string | null;
 };

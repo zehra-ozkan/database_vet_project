@@ -304,6 +304,26 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
   const canMarkFound =
     Boolean(hasMicrochipRecord) &&
     microchipSnapshot.status === "Reported Lost";
+  const referralPetOptions = data.available_pets.map((pet) => ({
+    petId: pet.petid,
+    petName: pet.pet_name,
+    petOwnerId: pet.ownerid,
+    petOwnerName: pet.owner_name,
+    vaccinationPlanId:
+      data.selected_pet_id === pet.petid && data.vaccination_plans.length === 1
+        ? data.vaccination_plans[0].planid
+        : null,
+  }));
+  const selectedPetReferralContext = data.selected_pet
+    ? {
+        petId: data.selected_pet.petid,
+        petName: data.selected_pet.pet_name,
+        petOwnerId: data.selected_pet.ownerid,
+        petOwnerName: data.selected_pet.owner_name,
+        vaccinationPlanId:
+          data.vaccination_plans.length === 1 ? data.vaccination_plans[0].planid : null,
+      }
+    : null;
 
   return (
     <main className={styles.page}>
@@ -365,6 +385,8 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                   initialNewsCount={0}
                   initialReferralTargets={data.referral_targets}
                   autoOpenReferral={autoOpenReferral}
+                  selectedPetContext={selectedPetReferralContext}
+                  referralPetOptions={referralPetOptions}
                 />
               </div>
             </section>
@@ -560,6 +582,8 @@ export default async function VetTimelinePage({ searchParams }: VetTimelinePageP
                   vetId={selectedVetId}
                   referralTargets={data.referral_targets}
                   autoOpen={autoOpenReferral}
+                  petContext={selectedPetReferralContext}
+                  petOptions={referralPetOptions}
                 />
                 <div className={`${styles.tableWrap} ${styles.mt1}`}>
                   <table>

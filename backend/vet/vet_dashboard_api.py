@@ -81,7 +81,7 @@ def _vet_resolve_pet_registered_vet(cursor, pet_id, fallback_vet_id=None):
     """
     Resolve the pet's registered veterinarian.
     Priority:
-    1) Most recent appointment linked to this pet via vaccination plan
+    1) Most recent appointment linked directly to this pet
     2) Most recent vaccination plan veterinarian for this pet
     3) Fallback veterinarian id (usually chip.veterinarianid)
     """
@@ -95,8 +95,7 @@ def _vet_resolve_pet_registered_vet(cursor, pet_id, fallback_vet_id=None):
         FROM (
             SELECT a.veterinarianid
             FROM appointment a
-            JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
-            WHERE vp.petid = %s
+            WHERE a.petid = %s
             ORDER BY a.datetime DESC
             LIMIT 1
         ) rv
@@ -238,8 +237,8 @@ def vet_get_dashboard():
                 a.appointmentid,
                 a.datetime,
                 a.atype,
-                COALESCE(vp_pet.petid, p.petid) AS petid,
-                COALESCE(vp_pet.name, p.name, 'Unknown') AS pet_name,
+                p.petid,
+                COALESCE(p.name, 'Unknown') AS pet_name,
                 uo.name AS owner_name,
                 CASE
                     WHEN vs.appointmentid IS NOT NULL THEN 'Completed'
@@ -249,15 +248,7 @@ def vet_get_dashboard():
             FROM appointment a
             JOIN petowner po ON po.ownerid = a.petownerid
             JOIN users uo ON uo.userid = po.ownerid
-            LEFT JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
-            LEFT JOIN pet vp_pet ON vp_pet.petid = vp.petid
-            LEFT JOIN LATERAL (
-                SELECT p.petid, p.name
-                FROM pet p
-                WHERE p.ownerid = a.petownerid
-                ORDER BY p.petid ASC
-                LIMIT 1
-            ) p ON TRUE
+            LEFT JOIN pet p ON p.petid = a.petid
             LEFT JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             WHERE a.veterinarianid = %s
               AND a.datetime::date = %s
@@ -274,10 +265,10 @@ def vet_get_dashboard():
                 FROM vaccinationplan vp
                 WHERE vp.veterinarianid = %s
                 UNION
-                SELECT p.petid
+                SELECT a.petid
                 FROM appointment a
-                JOIN pet p ON p.ownerid = a.petownerid
                 WHERE a.veterinarianid = %s
+                  AND a.petid IS NOT NULL
             )
             SELECT
                 vr.recordid,

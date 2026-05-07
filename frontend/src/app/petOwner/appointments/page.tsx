@@ -12,6 +12,7 @@ type AppointmentRow = {
   datetime: string;
   veterinarianname: string;
   branchname: string | null;
+  petname: string | null;
 };
 
 type InvoiceRow = {
@@ -221,6 +222,7 @@ export default function PetOwnerAppointmentsPage() {
                     <th>Date</th>
                     <th>Time</th>
                     <th>Vet</th>
+                    <th>Pet</th>
                     <th>Type</th>
                     <th>Status</th>
                     <th></th>
@@ -229,7 +231,7 @@ export default function PetOwnerAppointmentsPage() {
                 <tbody>
                   {filteredAppointments.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted" style={{ padding: "14px 8px" }}>
+                      <td colSpan={7} className="muted" style={{ padding: "14px 8px" }}>
                         No appointments found.
                       </td>
                     </tr>
@@ -242,6 +244,7 @@ export default function PetOwnerAppointmentsPage() {
                           <td>{date}</td>
                           <td>{time}</td>
                           <td>{appt.veterinarianname}</td>
+                          <td>{appt.petname ?? "—"}</td>
                           <td style={{ textTransform: "capitalize" }}>
                             {appt.atype.charAt(0) + appt.atype.slice(1).toLowerCase()}
                           </td>

@@ -347,10 +347,9 @@ def owner_pet_detail(pet_id: int):
         """
         SELECT b.name AS branchName
         FROM Appointment a
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         JOIN Branch b ON b.branchID = v.branchID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         LIMIT 1
         """,
@@ -361,8 +360,7 @@ def owner_pet_detail(pet_id: int):
         SELECT vs.notes, a.dateTime
         FROM VisitSummary vs
         JOIN Appointment a ON a.appointmentID = vs.appointmentID
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         LIMIT 1
         """,
@@ -467,8 +465,7 @@ def owner_pet_activity(pet_id: int):
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         LEFT JOIN Branch b ON b.branchID = v.branchID
-        JOIN VaccinationPlan vp ON vp.planID = a.vaccinationPlanID
-        WHERE vp.petID = %s
+        WHERE a.petID = %s
         ORDER BY a.dateTime DESC
         """,
         (pet_id,),
@@ -714,11 +711,11 @@ def owner_create_appointment():
 
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES ('VACCINATION', %s, %s, %s, %s)
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES ('VACCINATION', %s, %s, %s, %s, %s)
             RETURNING appointmentID
             """,
-            (data["dateTime"], plan_id, data["veterinarianID"], owner_id),
+            (data["dateTime"], plan_id, data["veterinarianID"], owner_id, data["petID"]),
         )
         row = cur.fetchone()
         conn.commit()
@@ -827,8 +824,35 @@ def create_vaccination_appointment():
     try:
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES ('VACCINATION', %s, %s, %s, %s)
+            SELECT vp.petID
+            FROM VaccinationPlan vp
+            JOIN Pet p ON p.petID = vp.petID
+            WHERE vp.planID = %s
+              AND p.ownerID = %s
+            """,
+            (data["vaccinationPlanId"], data["petOwnerId"]),
+        )
+        plan_row = cur.fetchone()
+        if plan_row is None:
+            conn.rollback()
+            return jsonify({"error": "Vaccination plan not found for this owner"}), 404
+
+        resolved_pet_id = int(plan_row["petid"])
+        requested_pet_id = data.get("petId")
+        if requested_pet_id is not None:
+            try:
+                parsed_requested_pet_id = int(requested_pet_id)
+            except (TypeError, ValueError):
+                conn.rollback()
+                return jsonify({"error": "petId must be a valid integer"}), 400
+            if parsed_requested_pet_id != resolved_pet_id:
+                conn.rollback()
+                return jsonify({"error": "Selected pet does not match vaccination plan"}), 409
+
+        cur.execute(
+            """
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES ('VACCINATION', %s, %s, %s, %s, %s)
             RETURNING appointmentID;
             """,
             (
@@ -836,6 +860,7 @@ def create_vaccination_appointment():
                 data["vaccinationPlanId"],
                 data["veterinarianId"],
                 data["petOwnerId"],
+                resolved_pet_id,
             ),
         )
         row = cur.fetchone()
@@ -905,9 +930,10 @@ def get_pet_activity(pet_id: int):
         SELECT a.appointmentID, a.dateTime, a.aType
         FROM Appointment a
         WHERE a.petOwnerID = %s
+          AND a.petID = %s
         ORDER BY a.dateTime DESC;
         """,
-        (owner_id,),
+        (owner_id, pet_id),
     )
     return jsonify(rows)
 
@@ -1267,11 +1293,12 @@ def book_create():
     data = request.get_json() or {}
     vet_id = data.get("vetId")
     appt_datetime = data.get("dateTime")
+    pet_id = data.get("petId")
     atype = data.get("aType", "CHECKUP")
     vaccination_plan_id = data.get("vaccinationPlanId")
 
-    if not vet_id or not appt_datetime:
-        return jsonify({"error": "vetId and dateTime are required"}), 400
+    if not vet_id or not appt_datetime or not pet_id:
+        return jsonify({"error": "vetId, dateTime and petId are required"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1304,14 +1331,39 @@ def book_create():
             if int(limit_row["booked"]) >= int(limit_row["maxdailyappointmentlimit"]):
                 return jsonify({"error": "This veterinarian has reached their daily appointment limit."}), 409
 
+        cur.execute(
+            """
+            SELECT petID
+            FROM Pet
+            WHERE petID = %s
+              AND ownerID = %s
+            """,
+            (pet_id, owner_id),
+        )
+        if cur.fetchone() is None:
+            return jsonify({"error": "Selected pet was not found for this owner."}), 404
+
+        if vaccination_plan_id is not None:
+            cur.execute(
+                """
+                SELECT planID
+                FROM VaccinationPlan
+                WHERE planID = %s
+                  AND petID = %s
+                """,
+                (vaccination_plan_id, pet_id),
+            )
+            if cur.fetchone() is None:
+                return jsonify({"error": "Vaccination plan was not found for selected pet."}), 404
+
         # Create the appointment
         cur.execute(
             """
-            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO Appointment (aType, dateTime, vaccinationPlanID, veterinarianID, petOwnerID, petID)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING appointmentID;
             """,
-            (atype, appt_datetime, vaccination_plan_id, vet_id, owner_id),
+            (atype, appt_datetime, vaccination_plan_id, vet_id, owner_id, pet_id),
         )
         new_id = cur.fetchone()["appointmentid"]
         conn.commit()
@@ -1336,10 +1388,17 @@ def appointments_list():
 
     rows = fetch_all(
         """
-        SELECT a.appointmentID, a.aType, a.dateTime, u.name AS veterinarianName, b.name AS branchName
+        SELECT
+            a.appointmentID,
+            a.aType,
+            a.dateTime,
+            u.name AS veterinarianName,
+            b.name AS branchName,
+            p.name AS petName
         FROM Appointment a
         JOIN Veterinarian v ON v.veterinarianID = a.veterinarianID
         JOIN Users u ON u.userID = v.veterinarianID
+        LEFT JOIN Pet p ON p.petID = a.petID
         LEFT JOIN Branch b ON b.branchID = v.branchID
         WHERE a.petOwnerID = %s
         ORDER BY a.dateTime DESC;

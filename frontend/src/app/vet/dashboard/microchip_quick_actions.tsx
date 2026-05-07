@@ -10,6 +10,8 @@ type MicrochipQuickActionsProps = {
   initialNewsCount: number;
   initialReferralTargets?: ReferralTarget[];
   autoOpenReferral?: boolean;
+  selectedPetContext?: ReferralPetContext | null;
+  referralPetOptions?: ReferralPetContext[];
 };
 
 type MicrochipLookupResponse = {
@@ -71,8 +73,26 @@ type ReferralTarget = {
   branch_name: string;
 };
 
+type ReferralPetContext = {
+  petId: number;
+  petName: string;
+  petOwnerId: number;
+  petOwnerName: string;
+  vaccinationPlanId?: number | null;
+};
+
+type ReferralAppointmentType = "CHECKUP" | "VACCINATION" | "COMPLAINT" | "EMERGENCY";
+
+type TimelineAvailablePet = {
+  petid: number;
+  pet_name: string;
+  ownerid: number;
+  owner_name: string;
+};
+
 type TimelineReferralTargetResponse = {
   referral_targets?: ReferralTarget[];
+  available_pets?: TimelineAvailablePet[];
   error?: unknown;
 };
 
@@ -83,6 +103,16 @@ const vetDashboardApiBaseCandidates = Array.from(
       .map((value) => value.replace(/\/$/, ""))
   )
 );
+
+const referralAppointmentTypeOptions: Array<{
+  value: ReferralAppointmentType;
+  label: string;
+}> = [
+  { value: "COMPLAINT", label: "Complaint" },
+  { value: "CHECKUP", label: "Checkup" },
+  { value: "VACCINATION", label: "Vaccination" },
+  { value: "EMERGENCY", label: "Emergency" },
+];
 
 async function fetchMicrochipLookup(
   vetId: number,
@@ -166,7 +196,11 @@ async function markMicrochipNewsRead(vetId: number): Promise<void> {
 
 async function fetchReferralTargets(
   vetId: number
-): Promise<{ data: ReferralTarget[] | null; error: string | null }> {
+): Promise<{
+  targets: ReferralTarget[] | null;
+  petOptions: ReferralPetContext[] | null;
+  error: string | null;
+}> {
   let lastError = "Referral targets could not be loaded.";
   for (const apiBase of vetDashboardApiBaseCandidates) {
     try {
@@ -183,32 +217,63 @@ async function fetchReferralTargets(
       const targets = Array.isArray(payload.referral_targets)
         ? payload.referral_targets
         : [];
-      return { data: targets, error: null };
+      const petOptions = Array.isArray(payload.available_pets)
+        ? payload.available_pets
+            .map((pet) => {
+              const petId = Number(pet.petid);
+              const petOwnerId = Number(pet.ownerid);
+              if (!Number.isInteger(petId) || petId <= 0 || !Number.isInteger(petOwnerId) || petOwnerId <= 0) {
+                return null;
+              }
+              const mapped: ReferralPetContext = {
+                petId,
+                petName: String(pet.pet_name ?? "").trim() || `Pet #${petId}`,
+                petOwnerId,
+                petOwnerName: String(pet.owner_name ?? "").trim() || `Owner #${petOwnerId}`,
+                vaccinationPlanId: null,
+              };
+              return mapped;
+            })
+            .filter((item): item is ReferralPetContext => item !== null)
+        : [];
+      return { targets, petOptions, error: null };
     } catch (error) {
       lastError = vetBuildClientErrorMessage(error, "Referral targets could not be loaded.");
     }
   }
-  return { data: null, error: lastError };
+  return { targets: null, petOptions: null, error: lastError };
 }
 
 async function postReferralAction(
   vetId: number,
   refereeVetId: number,
-  diagnosis: string
+  diagnosis: string,
+  appointmentType: ReferralAppointmentType,
+  petContext: ReferralPetContext | null
 ): Promise<{ error: string | null }> {
   let lastError = "Request failed.";
   for (const apiBase of vetDashboardApiBaseCandidates) {
     try {
+      const payload: Record<string, unknown> = {
+        vetId,
+        refereeVetId,
+        diagnosis,
+        appointmentType,
+      };
+      if (petContext) {
+        payload.petId = petContext.petId;
+        payload.petOwnerId = petContext.petOwnerId;
+        if (petContext.vaccinationPlanId) {
+          payload.vaccinationPlanId = petContext.vaccinationPlanId;
+        }
+      }
+
       const response = await fetch(`${apiBase}/vet/referrals`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          vetId,
-          refereeVetId,
-          diagnosis,
-        }),
+        body: JSON.stringify(payload),
       });
       const responsePayload = (await response.json()) as { error?: unknown };
       if (!response.ok) {
@@ -245,6 +310,8 @@ export default function MicrochipQuickActions({
   initialNewsCount,
   initialReferralTargets = [],
   autoOpenReferral = false,
+  selectedPetContext = null,
+  referralPetOptions = [],
 }: MicrochipQuickActionsProps) {
   const [newsCount, setNewsCount] = useState(Math.max(0, initialNewsCount || 0));
   const [chipModalOpen, setChipModalOpen] = useState(false);
@@ -261,11 +328,14 @@ export default function MicrochipQuickActions({
   const [newsItems, setNewsItems] = useState<MicrochipNewsItem[]>([]);
   const [referralModalOpen, setReferralModalOpen] = useState(autoOpenReferral);
   const [referralTargets, setReferralTargets] = useState<ReferralTarget[]>(initialReferralTargets);
+  const [loadedReferralPetOptions, setLoadedReferralPetOptions] = useState<ReferralPetContext[]>([]);
   const [referralTargetsLoading, setReferralTargetsLoading] = useState(false);
   const [referralTargetError, setReferralTargetError] = useState<string | null>(null);
   const [refereeVetId, setRefereeVetId] = useState<number | null>(
     initialReferralTargets.length > 0 ? initialReferralTargets[0].veterinarianid : null
   );
+  const [selectedReferralPetId, setSelectedReferralPetId] = useState<number | null>(selectedPetContext?.petId ?? null);
+  const [referralAppointmentType, setReferralAppointmentType] = useState<ReferralAppointmentType>("COMPLAINT");
   const [referralDiagnosis, setReferralDiagnosis] = useState("");
   const [referralSaving, setReferralSaving] = useState(false);
   const [referralMessage, setReferralMessage] = useState<string | null>(null);
@@ -340,26 +410,59 @@ export default function MicrochipQuickActions({
 
   const canUseActions = Boolean(vetId && vetId > 0);
   const hasNews = newsCount > 0;
+  const lookupReferralPetContext: ReferralPetContext | null = chipLookupData
+    ? {
+        petId: chipLookupData.pet.pet_id,
+        petName: chipLookupData.pet.pet_name,
+        petOwnerId: chipLookupData.owner.owner_id,
+        petOwnerName: chipLookupData.owner.owner_name,
+      }
+    : null;
+  const mergedReferralPetOptions: ReferralPetContext[] = [];
+  const seenReferralPetIds = new Set<number>();
+  const addReferralPetOption = (option: ReferralPetContext | null | undefined) => {
+    if (!option || seenReferralPetIds.has(option.petId)) {
+      return;
+    }
+    seenReferralPetIds.add(option.petId);
+    mergedReferralPetOptions.push(option);
+  };
+  addReferralPetOption(lookupReferralPetContext);
+  addReferralPetOption(selectedPetContext);
+  for (const option of loadedReferralPetOptions) {
+    addReferralPetOption(option);
+  }
+  for (const option of referralPetOptions) {
+    addReferralPetOption(option);
+  }
+  const activeReferralPetContext =
+    mergedReferralPetOptions.find((option) => option.petId === selectedReferralPetId) ??
+    mergedReferralPetOptions[0] ??
+    null;
 
   const loadReferralTargets = async () => {
     if (!canUseActions) {
       setReferralTargetError("Veterinarian context is not ready yet.");
       return;
     }
-    if (referralTargets.length > 0) {
+    if (referralTargets.length > 0 && mergedReferralPetOptions.length > 0) {
       return;
     }
     setReferralTargetsLoading(true);
     setReferralTargetError(null);
-    const { data, error } = await fetchReferralTargets(vetId!);
+    const { targets, petOptions, error } = await fetchReferralTargets(vetId!);
     setReferralTargetsLoading(false);
-    if (!data) {
+    if (!targets || !petOptions) {
       setReferralTargetError(error ?? "Referral targets could not be loaded.");
       return;
     }
-    setReferralTargets(data);
-    if (data.length > 0) {
-      setRefereeVetId(data[0].veterinarianid);
+    setReferralTargets(targets);
+    setLoadedReferralPetOptions(petOptions);
+    if (targets.length > 0) {
+      setRefereeVetId(targets[0].veterinarianid);
+    }
+    if (!selectedReferralPetId && petOptions.length > 0) {
+      setSelectedReferralPetId(petOptions[0].petId);
     }
   };
 
@@ -386,6 +489,7 @@ export default function MicrochipQuickActions({
       return;
     }
     setChipLookupData(data);
+    setSelectedReferralPetId(data.pet.pet_id);
   };
 
   const handleSendFoundNews = async () => {
@@ -459,6 +563,10 @@ export default function MicrochipQuickActions({
       setReferralError("Select a referee veterinarian.");
       return;
     }
+    if (!activeReferralPetContext) {
+      setReferralError("Select a pet before submitting referral.");
+      return;
+    }
     const normalizedDiagnosis = referralDiagnosis.trim();
     if (!normalizedDiagnosis) {
       setReferralError("Referral diagnosis is required.");
@@ -468,7 +576,13 @@ export default function MicrochipQuickActions({
     setReferralError(null);
     setReferralMessage(null);
     setReferralSaving(true);
-    const { error } = await postReferralAction(vetId!, refereeVetId, normalizedDiagnosis);
+    const { error } = await postReferralAction(
+      vetId!,
+      refereeVetId,
+      normalizedDiagnosis,
+      referralAppointmentType,
+      activeReferralPetContext
+    );
     setReferralSaving(false);
     if (error) {
       setReferralError(error);
@@ -643,8 +757,38 @@ export default function MicrochipQuickActions({
         <div className={styles.modalBackdrop} onClick={closeReferralModal}>
           <div className={styles.modalCard} onClick={(event) => event.stopPropagation()}>
             <h3 className={styles.pageTitle}>Create referral</h3>
-            <p className={styles.pageSubtitle}>Create referral without leaving this page.</p>
+            <p className={styles.pageSubtitle}>
+              {activeReferralPetContext
+                ? `Pet: ${activeReferralPetContext.petName} (#${activeReferralPetContext.petId}) · Owner: ${activeReferralPetContext.petOwnerName} (#${activeReferralPetContext.petOwnerId})`
+                : referralTargetsLoading
+                  ? "Loading pet list..."
+                  : "No pet selected. Select a pet below or use microchip lookup."}
+            </p>
             <form onSubmit={submitReferral} className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Pet</label>
+                <select
+                  className={styles.inputControl}
+                  value={activeReferralPetContext?.petId ?? ""}
+                  onChange={(event) => {
+                    const parsedValue = Number.parseInt(event.target.value, 10);
+                    setSelectedReferralPetId(Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null);
+                  }}
+                  disabled={referralSaving || mergedReferralPetOptions.length === 0}
+                >
+                  {mergedReferralPetOptions.length === 0 ? (
+                    <option value="">
+                      {referralTargetsLoading ? "Loading pets..." : "No pet available"}
+                    </option>
+                  ) : (
+                    mergedReferralPetOptions.map((option) => (
+                      <option key={option.petId} value={option.petId}>
+                        {option.petName} · {option.petOwnerName}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>Referee veterinarian</label>
                 <select
@@ -669,6 +813,23 @@ export default function MicrochipQuickActions({
                   )}
                 </select>
               </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Appointment type</label>
+                <select
+                  className={styles.inputControl}
+                  value={referralAppointmentType}
+                  onChange={(event) =>
+                    setReferralAppointmentType(event.target.value as ReferralAppointmentType)
+                  }
+                  disabled={referralSaving}
+                >
+                  {referralAppointmentTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className={styles.formGroup} style={{ minWidth: "100%" }}>
                 <label className={styles.formLabel}>Referral diagnosis</label>
                 <textarea
@@ -687,7 +848,12 @@ export default function MicrochipQuickActions({
                 <button
                   type="submit"
                   className={styles.btn}
-                  disabled={referralSaving || referralTargetsLoading || !refereeVetId}
+                  disabled={
+                    referralSaving ||
+                    referralTargetsLoading ||
+                    !refereeVetId ||
+                    !activeReferralPetContext
+                  }
                 >
                   {referralSaving ? "Saving..." : "Submit referral"}
                 </button>

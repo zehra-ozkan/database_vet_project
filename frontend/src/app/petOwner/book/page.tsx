@@ -231,6 +231,7 @@ function BookPageInner() {
         "POST",
         {
           ownerId,
+          petId: Number(formPetId),
           vetId: Number(formVetId),
           dateTime: apptDateTime,
           aType: formAType,

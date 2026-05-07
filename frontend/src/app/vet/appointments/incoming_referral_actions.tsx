@@ -15,6 +15,7 @@ type IncomingReferral = {
   referrer_name: string;
   inferred_owner_id: number | null;
   inferred_owner_name: string | null;
+  inferred_pet_id: number | null;
   inferred_vaccination_plan_id: number | null;
   inferred_appointment_type: string | null;
 };
@@ -99,6 +100,7 @@ export default function IncomingReferralActions({
       diagnosisRaw: referral.diagnosis_raw,
       scheduledDateTime,
       petOwnerId: referral.inferred_owner_id,
+      petId: referral.inferred_pet_id,
       vaccinationPlanId: referral.inferred_vaccination_plan_id,
       appointmentType: referral.inferred_appointment_type ?? "COMPLAINT",
     });

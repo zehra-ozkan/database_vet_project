@@ -235,6 +235,7 @@ function PetProfileContent() {
       await apiSend("/owner/appointments/vaccination", "POST", {
         appointmentId: Number(bookingForm.appointmentId),
         dateTime,
+        petId: Number(petId),
         vaccinationPlanId: selectedPlanId,
         veterinarianId: Number(bookingForm.selectedVetId),
         petOwnerId: ownerId,

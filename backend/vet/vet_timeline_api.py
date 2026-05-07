@@ -60,8 +60,7 @@ def _vet_resolve_pet_registered_vet(cursor, pet_id, fallback_vet_id=None):
         FROM (
             SELECT a.veterinarianid
             FROM appointment a
-            JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
-            WHERE vp.petid = %s
+            WHERE a.petid = %s
             ORDER BY a.datetime DESC
             LIMIT 1
         ) rv
@@ -190,7 +189,7 @@ def vet_get_timeline():
                 p.ownerid,
                 uo.name AS owner_name
             FROM appointment a
-            JOIN pet p ON p.ownerid = a.petownerid
+            JOIN pet p ON p.petid = a.petid
             JOIN users uo ON uo.userid = p.ownerid
             WHERE a.veterinarianid = %s
             ORDER BY p.name ASC
@@ -305,21 +304,17 @@ def vet_get_timeline():
                 vs.notes,
                 COALESCE(u.name, 'Unknown') AS veterinarian_name,
                 COALESCE(b.name, 'Unknown') AS branch_name,
-                vp.petid AS linked_pet_id,
-                p.name AS linked_pet_name,
-                CASE
-                    WHEN vp.petid IS NULL THEN TRUE
-                    ELSE FALSE
-                END AS owner_level_event
+                a.petid AS linked_pet_id,
+                COALESCE(p.name, 'Unknown') AS linked_pet_name,
+                FALSE AS owner_level_event
             FROM appointment a
             JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             LEFT JOIN users u ON u.userid = a.veterinarianid
             LEFT JOIN veterinarian vv ON vv.veterinarianid = a.veterinarianid
             LEFT JOIN branch b ON b.branchid = vv.branchid
-            LEFT JOIN vaccinationplan vp ON vp.planid = a.vaccinationplanid
-            LEFT JOIN pet p ON p.petid = vp.petid
+            LEFT JOIN pet p ON p.petid = a.petid
             WHERE a.petownerid = %s
-              AND (vp.petid IS NULL OR vp.petid = %s)
+              AND a.petid = %s
             ORDER BY a.datetime DESC
             """,
             (owner_id, selected_pet_id),
@@ -411,8 +406,7 @@ def vet_get_timeline():
                 "referral_targets": vet_serialize_records(referral_targets),
                 "microchip": vet_serialize_records([microchip])[0] if microchip else None,
                 "timeline_notice": (
-                    "Appointments are linked to pet owner, not directly to pet. "
-                    "Owner-level visit events may appear when appointment pet is unspecified."
+                    "Timeline shows pet-linked appointments and clinical history."
                 ),
             }
         )
