@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import StatusBadge from "@/components/manager/StatusBadge";
 import { apiGet, formatDate, formatMoney } from "@/lib/api";
 import type {
@@ -31,7 +31,6 @@ export default function ManagerDashboardPage() {
   const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [stockConsumptionReport, setStockConsumptionReport] = useState<StockConsumptionReportRow[]>([]);
   const [wasteStatisticsReport, setWasteStatisticsReport] = useState<WasteStatisticsReportRow[]>([]);
-  const [restockFrequencyReport, setRestockFrequencyReport] = useState<RestockFrequencyReportRow[]>([]);
   const [costBreakdownReport, setCostBreakdownReport] = useState<CostBreakdownReportRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -41,7 +40,7 @@ export default function ManagerDashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [summaryData, alertData, vaccinationData, billingData, stockReportData, wasteReportData, restockReportData, costReportData] = await Promise.all([
+        const [summaryData, alertData, vaccinationData, billingData, stockReportData, wasteReportData, , costReportData] = await Promise.all([
           apiGet<DashboardSummary>("/manager/dashboard/summary"),
           apiGet<DashboardAlerts>("/manager/dashboard/alerts"),
           apiGet<VaccinationRow[]>("/manager/vaccinations"),
@@ -59,7 +58,6 @@ export default function ManagerDashboardPage() {
         setBilling(billingData);
         setStockConsumptionReport(stockReportData);
         setWasteStatisticsReport(wasteReportData);
-        setRestockFrequencyReport(restockReportData);
         setCostBreakdownReport(costReportData);
         setError("");
       } catch (err) {
@@ -83,135 +81,94 @@ export default function ManagerDashboardPage() {
   const stockConsumption = summary?.stockconsumption ?? null;
   const vaccinationCompliance = summary?.vaccinationcompliance ?? null;
 
-  const reportRows = useMemo<ReportRow[]>(
-    () => [
-      {
-        report: "Stock consumption",
-        branch: branchList(vaccinations),
-        period: "Current",
-        indicator: formatCount(stockConsumption, " prescribed"),
-        notes: "Inventory threshold review",
-      },
-      {
-        report: "Vaccination compliance",
-        branch: branchList(vaccinations),
-        period: "Current",
-        indicator: vaccinationCompliance === null ? "No data" : `${vaccinationCompliance}% up to date`,
-        notes: "Vaccination plan status",
-      },
-      {
-        report: "Overdue vaccinations",
-        branch: branchList(vaccinations),
-        period: "Current",
-        indicator: formatCount(overdueVaccinationCount, " overdue"),
-        notes: "Follow-up required",
-      },
-      {
-        report: "Wasted inventory (expired)",
-        branch: branchList(vaccinations),
-        period: "Current",
-        indicator: formatCount(wastedInventoryCount, " waste logs"),
-        notes: "Medicine status review",
-      },
-      {
-        report: "Revenue per branch",
-        branch: branchList(vaccinations),
-        period: "Current",
-        indicator: paidRevenue === null ? "No data" : formatMoney(paidRevenue),
-        notes: "Billing compliance snapshot",
-      },
-    ],
-    [overdueVaccinationCount, paidRevenue, stockConsumption, vaccinationCompliance, vaccinations, wastedInventoryCount],
-  );
-
   if (loading) return <PanelMessage message="Loading dashboard..." />;
   if (error) return <PanelMessage message={error} tone="error" />;
 
   const lowStockText = formatLowStockAlert(alerts?.lowStock, lowStockCount);
   const overdueText = formatVaccinationAlert(alerts?.vaccinations, overdueVaccinationCount);
-  const policyOwner = vaccinations.find((row) => row.recommendedvet)?.recommendedvet || "No data";
-  const planCoverage = formatPlanCoverage(summary);
   const topConsumedMedicine = stockConsumptionReport[0];
   const totalPrescribed = stockConsumptionReport.reduce((total, row) => total + Number(row.prescribedcount || 0), 0);
   const totalWasteLogs = wasteStatisticsReport.reduce((total, row) => total + Number(row.wastelogcount || 0), 0);
   const expiredSupplyRejected = wasteStatisticsReport.reduce((total, row) => total + Number(row.expiredsupplyrejected || 0), 0);
-  const successfulStockIncreases = restockFrequencyReport.reduce((total, row) => total + Number(row.successfulstockincreases || 0), 0);
-  const estimatedInventoryUnits = costBreakdownReport.reduce((total, row) => total + Number(row.estimatedinventoryunits || 0), 0);
+  const policyOwner = vaccinations.find((row) => row.recommendedvet)?.recommendedvet || "No policy owner found";
+  const planCoverage = formatPlanCoverage(vaccinations, summary);
+  const reportRows: ReportRow[] = [
+    {
+      report: "Stock consumption",
+      branch: branchList(stockConsumptionReport.map((row) => row.branch)),
+      period: "Current",
+      indicator: stockConsumptionReport.length ? `${totalPrescribed} units` : formatCount(stockConsumption, " units"),
+      notes: topConsumedMedicine ? `Top: ${topConsumedMedicine.medicinename}` : "No prescription usage found",
+    },
+    {
+      report: "Vaccination compliance",
+      branch: branchList(vaccinations.map((row) => row.branch)),
+      period: "Current",
+      indicator: vaccinationCompliance === null ? "No vaccination compliance data" : `${vaccinationCompliance}%`,
+      notes: summary?.totalpets ? `${summary.vaccinatedpets} of ${summary.totalpets} pets vaccinated` : "No pet records found",
+    },
+    {
+      report: "Overdue vaccinations",
+      branch: branchList(vaccinations.filter((row) => row.status === "overdue").map((row) => row.branch)),
+      period: "Current",
+      indicator: formatCount(overdueVaccinationCount, " pets"),
+      notes: overdueVaccinationCount ? "Follow-up required" : "No overdue vaccination records",
+    },
+    {
+      report: "Wasted inventory (expired)",
+      branch: branchList(wasteStatisticsReport.map((row) => row.branch)),
+      period: "Current",
+      indicator: wasteStatisticsReport.length ? `${totalWasteLogs} units` : formatCount(wastedInventoryCount, " units"),
+      notes: `${expiredSupplyRejected} expired supply rejected`,
+    },
+    {
+      report: "Revenue per branch",
+      branch: branchList(costBreakdownReport.map((row) => row.branch)),
+      period: "Current",
+      indicator: paidRevenue === null ? "No billing data" : formatMoney(paidRevenue),
+      notes: outstandingInvoicesTotal === null ? "No invoice data" : `${formatMoney(outstandingInvoicesTotal)} outstanding`,
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <section className="grid items-stretch gap-6 lg:grid-cols-3">
-        <div className="flex flex-col gap-6 lg:col-span-2">
-          <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70 md:p-8">
-            <h1 className="text-3xl font-black tracking-tight text-slate-800 md:text-4xl">Manager dashboard</h1>
-            <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-500">
-              Track branch medicine inventory, supply logs, stock usage, billing compliance, and vaccination indicators across branches.
-            </p>
-          </section>
-
-          <div className="grid gap-5 md:grid-cols-3">
+    <div className="space-y-4">
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+          <h1 className="m-0 text-2xl font-extrabold text-[#0f172a]">Manager dashboard</h1>
+          <p className="mt-1.5 text-sm leading-6 text-[rgba(15,23,42,0.68)]">
+            Track branch medicine inventory, supply logs, stock usage, billing compliance, and vaccination indicators across branches.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <KpiCard title="Low stock items" value={formatKpi(lowStockCount)} />
             <KpiCard title="Overdue vaccinations" value={formatKpi(overdueVaccinationCount)} />
-            <KpiCard title="Outstanding invoices" value={outstandingInvoicesTotal === null ? "No data" : formatMoney(outstandingInvoicesTotal)} />
+            <KpiCard title="Outstanding invoices" value={outstandingInvoicesTotal === null ? "No invoice data" : formatMoney(outstandingInvoicesTotal)} />
           </div>
-        </div>
+        </section>
 
-        <div className="flex h-full flex-col">
-          <section className="h-full rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-            <h2 className="text-lg font-black text-slate-800">Quick Access</h2>
-            <Link href="/manager/inventory" className="mt-5 inline-flex w-full justify-center rounded-2xl bg-slate-800 px-4 py-3 text-sm font-bold text-white shadow-sm">
-              Inventory & supply
-            </Link>
-          </section>
+        <section className="rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+          <h2 className="m-0 mb-3 text-base font-bold text-[#0f172a]">Quick access</h2>
+          <Link href="/manager/inventory" className="block w-full rounded-[14px] border border-[rgba(109,40,217,0.35)] bg-[linear-gradient(135deg,rgba(109,40,217,0.14),rgba(59,130,246,0.08))] px-4 py-2.5 text-center text-sm text-[#0f172a] transition hover:opacity-90">
+            Inventory & supply
+          </Link>
+        </section>
+      </section>
+
+      <section className="rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+        <h2 className="m-0 mb-1.5 text-[22px] font-extrabold text-[#0f172a]">Alerts</h2>
+        <p className="m-0 mb-5 text-sm text-[rgba(15,23,42,0.68)]">Stock, compliance, and operational reminders</p>
+        <div className="grid grid-cols-1 gap-0">
+          <AlertRow label="Low stock" text={lowStockText} tone="warning" />
+          <AlertRow label="Vaccination overdue" text={overdueText} tone="danger" />
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-        <h2 className="text-xl font-black text-slate-800">Alerts</h2>
-        <div className="mt-5 space-y-3">
-          <AlertRow label="Low stock" text={lowStockText} />
-          <AlertRow label="Vaccination overdue" text={overdueText} />
-        </div>
-      </section>
-
-      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-        <h2 className="text-xl font-black text-slate-800">Inventory Reports</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <InfoCard title="Stock consumption" value={`${totalPrescribed} prescribed`} />
-          <InfoCard title="Waste statistics" value={`${totalWasteLogs} waste logs`} />
-          <InfoCard title="Restock frequency" value={`${successfulStockIncreases} increases`} />
-          <InfoCard title="Cost breakdown" value={`${estimatedInventoryUnits} units`} />
-        </div>
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.18em] text-slate-400">
-              <tr className="border-b border-slate-100">
-                <TableHead>Report</TableHead>
-                <TableHead>Metric</TableHead>
-                <TableHead>Detail</TableHead>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-600">
+      <section className="rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+        <h2 className="m-0 mb-1.5 text-[22px] font-extrabold text-[#0f172a]">Reports snapshot</h2>
+        <p className="m-0 mb-5 text-sm text-[rgba(15,23,42,0.68)]">Key analytics for inventory usage, vaccination compliance, and revenue by branch.</p>
+        <div className="mt-3.5 overflow-auto rounded-2xl border border-[rgba(15,23,42,0.12)] bg-[rgba(2,6,23,0.02)]">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead>
               <tr>
-                <TableCell strong>Top consumed medicine</TableCell>
-                <TableCell>{topConsumedMedicine ? `${topConsumedMedicine.prescribedcount} prescribed` : "No data"}</TableCell>
-                <TableCell>{topConsumedMedicine ? `${topConsumedMedicine.medicinename} at ${topConsumedMedicine.branch}` : "No prescription usage found"}</TableCell>
-              </tr>
-              <tr>
-                <TableCell strong>Expired supply rejected</TableCell>
-                <TableCell>{expiredSupplyRejected}</TableCell>
-                <TableCell>WasteLog entries created from rejected expired supply</TableCell>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.18em] text-slate-400">
-              <tr className="border-b border-slate-100">
                 <TableHead>Report</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Period</TableHead>
@@ -219,7 +176,7 @@ export default function ManagerDashboardPage() {
                 <TableHead>Notes</TableHead>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-600">
+            <tbody>
               {reportRows.map((row) => (
                 <tr key={row.report}>
                   <TableCell strong>{row.report}</TableCell>
@@ -234,17 +191,18 @@ export default function ManagerDashboardPage() {
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-        <h2 className="text-2xl font-black text-slate-800">Vaccination Plan & Records</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <section className="rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+        <h2 className="m-0 mb-1.5 text-[22px] font-extrabold text-[#0f172a]">Vaccination Plan & Records</h2>
+        <p className="m-0 text-sm text-[rgba(15,23,42,0.68)]">Threshold: 30 days past due (configurable) · Owners see upcoming/overdue highlights</p>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
           <InfoCard title="Policy owner" value={policyOwner} />
           <InfoCard title="Plan coverage" value={planCoverage} />
         </div>
 
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.18em] text-slate-400">
-              <tr className="border-b border-slate-100">
+        <div className="mt-4 overflow-auto rounded-2xl border border-[rgba(15,23,42,0.12)] bg-[rgba(2,6,23,0.02)]">
+          <table className="w-full min-w-[980px] border-collapse text-left">
+            <thead>
+              <tr>
                 <TableHead>Branch</TableHead>
                 <TableHead>Pet</TableHead>
                 <TableHead>Owner</TableHead>
@@ -256,11 +214,11 @@ export default function ManagerDashboardPage() {
                 <TableHead>Status</TableHead>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-600">
+            <tbody>
               {vaccinations.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-slate-400" colSpan={9}>
-                    No data
+                  <td className="px-3.5 py-8 text-center text-[13px] text-[rgba(15,23,42,0.68)]" colSpan={9}>
+                    No vaccination records found.
                   </td>
                 </tr>
               ) : (
@@ -290,65 +248,67 @@ export default function ManagerDashboardPage() {
 
 function KpiCard({ title, value }: { title: string; value: string | number }) {
   return (
-    <section className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm shadow-slate-200/70">
-      <p className="text-sm font-bold text-slate-500">{title}</p>
-      <p className="mt-4 text-4xl font-black tracking-tight text-slate-800">{value}</p>
+    <section className="rounded-2xl border border-[rgba(15,23,42,0.10)] bg-white/70 p-3.5">
+      <p className="m-0 text-[13px] text-[rgba(15,23,42,0.68)]">{title}</p>
+      <p className="mt-1.5 text-2xl font-black text-[#0f172a]">{value}</p>
     </section>
   );
 }
 
-function AlertRow({ label, text }: { label: string; text: string }) {
+function AlertRow({ label, text, tone }: { label: string; text: string; tone: "warning" | "danger" }) {
+  const border = tone === "warning" ? "border-l-[#d97706]" : "border-l-[#e11d48]";
+
   return (
-    <div className="grid gap-2 rounded-2xl bg-slate-50/80 px-4 py-3 text-sm md:grid-cols-[210px_1fr] md:items-center">
-      <p className="font-black text-slate-700">{label}</p>
-      <p className="text-slate-500">{text}</p>
+    <div className={`mb-2.5 rounded-2xl border border-l-4 border-[rgba(15,23,42,0.12)] bg-white/70 p-3.5 ${border}`}>
+      <p className="m-0 font-bold text-[#0f172a]">{label}</p>
+      <p className="m-0 mt-1 text-[13px] text-[rgba(15,23,42,0.68)]">{text}</p>
     </div>
   );
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-3xl bg-slate-50/80 p-5">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{title}</p>
-      <p className="mt-3 text-xl font-black text-slate-800">{value}</p>
+    <div className="rounded-2xl border border-[rgba(15,23,42,0.12)] bg-white/70 p-3.5">
+      <p className="m-0 font-bold text-[#0f172a]">{title}</p>
+      <p className="m-0 mt-1 text-[13px] text-[rgba(15,23,42,0.68)]">{value}</p>
     </div>
   );
 }
 
 function TableHead({ children }: { children: ReactNode }) {
-  return <th className="px-4 py-4 font-black">{children}</th>;
+  return <th className="border-b border-[rgba(15,23,42,0.08)] px-3.5 py-3 text-left text-xs font-semibold text-[rgba(15,23,42,0.68)]">{children}</th>;
 }
 
 function TableCell({ children, strong = false }: { children: ReactNode; strong?: boolean }) {
-  return <td className={`px-4 py-4 align-middle ${strong ? "font-black text-slate-800" : ""}`}>{children}</td>;
+  return <td className={`border-b border-[rgba(15,23,42,0.08)] px-3.5 py-3 align-middle text-[13px] text-[#0f172a] last:border-b-0 ${strong ? "font-semibold" : ""}`}>{children}</td>;
 }
 
 function PanelMessage({ message, tone = "normal" }: { message: string; tone?: "normal" | "error" }) {
-  return <div className={`rounded-3xl bg-white/90 p-6 text-sm font-semibold shadow-sm ${tone === "error" ? "text-rose-700" : "text-slate-500"}`}>{message}</div>;
+  return <div className={`rounded-[18px] border border-[rgba(15,23,42,0.12)] bg-white/75 p-5 text-sm shadow-[0_16px_45px_rgba(15,23,42,0.10)] ${tone === "error" ? "text-rose-700" : "text-[rgba(15,23,42,0.68)]"}`}>{message}</div>;
 }
 
 function formatLowStockAlert(items: DashboardAlerts["lowStock"] | undefined, lowStockCount: number | null) {
-  if (!items) return "No data";
+  if (!items) return "Low stock data is unavailable.";
   if (items.length === 0) {
-    return lowStockCount === null ? "No data" : `${lowStockCount} items below threshold`;
+    return lowStockCount === null || lowStockCount === 0 ? "No medicines are currently below threshold." : `${lowStockCount} items below threshold`;
   }
 
-  return items.map((item) => `${item.name || "No data"} at ${item.branch || "No data"}`).join(" · ");
+  return items.map((item) => `${item.name || "Unnamed medicine"} at ${item.branch || "unassigned branch"}`).join(" · ");
 }
 
 function formatVaccinationAlert(items: DashboardAlerts["vaccinations"] | undefined, overdueCount: number | null) {
   if (items && items.length > 0) {
     return items
-      .map((item) => `${item.petname || item.petName || "No data"} overdue${item.ownername || item.ownerName ? ` for ${item.ownername || item.ownerName}` : ""}`)
+      .map((item) => `${item.petname || item.petName || "Unnamed pet"} overdue${item.ownername || item.ownerName ? ` for ${item.ownername || item.ownerName}` : ""}`)
       .join(" · ");
   }
 
-  return overdueCount === null ? "No data" : `${overdueCount} pets with overdue vaccines across branches`;
+  return overdueCount === null || overdueCount === 0 ? "No pets currently have overdue vaccines." : `${overdueCount} pets with overdue vaccines across branches`;
 }
 
-function branchList(rows: VaccinationRow[]) {
-  const branches = Array.from(new Set(rows.map((row) => row.branch).filter(Boolean)));
-  return branches.length ? branches.slice(0, 2).join(", ") : "No data";
+function branchList(branches: Array<string | null | undefined>) {
+  const uniqueBranches = Array.from(new Set(branches.filter(Boolean)));
+  return uniqueBranches.length ? uniqueBranches.slice(0, 2).join(", ") : "All";
 }
 
 function formatKpi(value: number | null) {
@@ -359,8 +319,10 @@ function formatCount(value: number | null, suffix: string) {
   return value === null ? "No data" : `${value}${suffix}`;
 }
 
-function formatPlanCoverage(summary: DashboardSummary | null) {
-  if (!summary || summary.vaccinatedpets === null || summary.totalpets === null) return "No data";
+function formatPlanCoverage(vaccinations: VaccinationRow[], summary: DashboardSummary | null) {
+  const vaccineNames = Array.from(new Set(vaccinations.map((row) => row.vaccinename).filter(Boolean)));
+  if (vaccineNames.length) return vaccineNames.slice(0, 4).join(", ");
+  if (!summary || summary.vaccinatedpets === null || summary.totalpets === null) return "No vaccination plan records found";
 
   return `${summary.vaccinatedpets} of ${summary.totalpets} pets`;
 }
