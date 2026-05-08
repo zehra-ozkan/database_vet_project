@@ -1356,6 +1356,83 @@ def vet_reschedule_appointment(appointment_id):
             conn.close()
 
 
+@vet_appointments_bp.route("/api/vet/appointments/<int:appointment_id>/insert-chip", methods=["POST"])
+def vet_insert_microchip(appointment_id):
+    """Insert a microchip for the pet associated with this appointment."""
+    payload = request.get_json(silent=True) or {}
+    
+    try:
+        vet_id = _vet_resolve_vet_id(payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+        
+    chip_location = payload.get("location", "Neck")
+    chip_id_input = payload.get("chipId")
+    
+    if chip_id_input:
+        try:
+            chip_id_input = int(chip_id_input)
+        except ValueError:
+            return jsonify({"error": "chipId must be an integer."}), 400
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = vet_get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        appointment = _vet_fetch_appointment_context(cursor, appointment_id, vet_id)
+        if not appointment:
+            return jsonify({"error": "Appointment not found for this veterinarian."}), 404
+
+        pet_id = appointment["petid"]
+        if pet_id is None:
+            return jsonify({"error": "Appointment is missing pet context."}), 409
+
+        # Check if pet already has a chip
+        cursor.execute("SELECT chipID FROM Chip WHERE petID = %s", (pet_id,))
+        if cursor.fetchone():
+            return jsonify({"error": "This pet already has a registered microchip."}), 409
+
+        if chip_id_input:
+            cursor.execute(
+                """
+                INSERT INTO Chip (chipID, location, isLost, petID, veterinarianID, implantationDate)
+                VALUES (%s, %s, FALSE, %s, %s, CURRENT_DATE)
+                RETURNING chipID, location, implantationDate
+                """,
+                (chip_id_input, chip_location, pet_id, vet_id)
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO Chip (location, isLost, petID, veterinarianID, implantationDate)
+                VALUES (%s, FALSE, %s, %s, CURRENT_DATE)
+                RETURNING chipID, location, implantationDate
+                """,
+                (chip_location, pet_id, vet_id)
+            )
+            
+        new_chip = cursor.fetchone()
+        conn.commit()
+
+        return jsonify({
+            "message": "Microchip registered successfully.",
+            "chip": _vet_serialize_row(new_chip)
+        }), 201
+
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return _vet_error_response(exc)
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 @vet_appointments_bp.route("/api/vet/appointments/<int:appointment_id>/finalize", methods=["POST"])
 def vet_finalize_appointment(appointment_id):
     """Finalize draft clinical actions and complete appointment in one transaction."""
