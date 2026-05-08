@@ -14,11 +14,14 @@ _VET_REFERRAL_APPROVAL_MARKER = "[[APPROVED_APPT:"
 _VET_REFERRAL_APPROVAL_SUFFIX = "]]"
 
 
-def _vet_parse_filter_date(raw_date):
+def _vet_parse_filter_date(raw_date, field_name):
     """Parse optional date filters in YYYY-MM-DD format."""
     if not raw_date:
         return None
-    return datetime.strptime(raw_date, "%Y-%m-%d").date()
+    try:
+        return datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be in YYYY-MM-DD format.") from exc
 
 
 def _vet_parse_optional_date(raw_value, field_name):
@@ -271,8 +274,9 @@ def _vet_resolve_selected_pet_id(owner_pets, requested_pet_id):
 
 @vet_appointments_bp.route("/api/vet/appointments", methods=["GET"])
 def vet_get_appointments():
-    """Return veterinarian appointments with optional branch/date filters."""
-    date_raw = request.args.get("date")
+    """Return veterinarian appointments with optional branch/date-range filters."""
+    start_date_raw = request.args.get("startDate")
+    end_date_raw = request.args.get("endDate")
     branch_id_raw = request.args.get("branchId")
 
     try:
@@ -281,9 +285,10 @@ def vet_get_appointments():
         return jsonify({"error": "vetId must be a positive integer."}), 400
 
     try:
-        selected_date = _vet_parse_filter_date(date_raw)
-    except ValueError:
-        return jsonify({"error": "date must be in YYYY-MM-DD format."}), 400
+        selected_start_date = _vet_parse_filter_date(start_date_raw, "startDate")
+        selected_end_date = _vet_parse_filter_date(end_date_raw, "endDate")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     try:
         selected_branch_id = _vet_parse_optional_int(branch_id_raw)
@@ -353,11 +358,20 @@ def vet_get_appointments():
             LEFT JOIN pet p ON p.petid = a.petid
             LEFT JOIN visitsummary vs ON vs.appointmentid = a.appointmentid
             WHERE a.veterinarianid = %s
-              AND (%s::date IS NULL OR a.datetime::date = %s::date)
+              AND (%s::date IS NULL OR a.datetime::date >= %s::date)
+              AND (%s::date IS NULL OR a.datetime::date <= %s::date)
               AND (%s::int IS NULL OR v.branchid = %s::int)
             ORDER BY a.datetime ASC
             """,
-            (vet_id, selected_date, selected_date, selected_branch_id, selected_branch_id),
+            (
+                vet_id,
+                selected_start_date,
+                selected_start_date,
+                selected_end_date,
+                selected_end_date,
+                selected_branch_id,
+                selected_branch_id,
+            ),
         )
         appointments = cursor.fetchall()
 
@@ -411,7 +425,8 @@ def vet_get_appointments():
             {
                 "vet_id": vet_id,
                 "filters": {
-                    "date": selected_date.isoformat() if selected_date else None,
+                    "start_date": selected_start_date.isoformat() if selected_start_date else None,
+                    "end_date": selected_end_date.isoformat() if selected_end_date else None,
                     "branch_id": selected_branch_id,
                 },
                 "profile": vet_serialize_records([profile])[0],

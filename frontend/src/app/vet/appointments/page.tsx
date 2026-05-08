@@ -45,7 +45,8 @@ type VetIncomingReferralItem = {
 type VetAppointmentsResponse = {
   vet_id: number;
   filters: {
-    date: string | null;
+    start_date: string | null;
+    end_date: string | null;
     branch_id: number | null;
   };
   profile: VetAppointmentsProfile;
@@ -72,7 +73,8 @@ type VetDashboardSnapshotResponse = {
 
 type VetAppointmentsPageProps = {
   searchParams?: Promise<{
-    date?: VetSearchValue;
+    startDate?: VetSearchValue;
+    endDate?: VetSearchValue;
     branchId?: VetSearchValue;
   }>;
 };
@@ -141,12 +143,16 @@ function getStatusPillClass(status: VetAppointmentItem["status"]): string {
 
 async function fetchVetAppointments(
   vetId: number,
-  dateFilter: string | undefined,
+  startDateFilter: string | undefined,
+  endDateFilter: string | undefined,
   branchIdFilter: number | null
 ): Promise<{ data: VetAppointmentsResponse | null; error: string | null }> {
   const queryParts = [`vetId=${vetId}`];
-  if (dateFilter) {
-    queryParts.push(`date=${encodeURIComponent(dateFilter)}`);
+  if (startDateFilter) {
+    queryParts.push(`startDate=${encodeURIComponent(startDateFilter)}`);
+  }
+  if (endDateFilter) {
+    queryParts.push(`endDate=${encodeURIComponent(endDateFilter)}`);
   }
   if (branchIdFilter) {
     queryParts.push(`branchId=${branchIdFilter}`);
@@ -167,7 +173,8 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
   }
 
   const resolvedSearchParams = (await searchParams) ?? {};
-  const selectedDate = vetGetSearchValue(resolvedSearchParams.date);
+  const selectedStartDate = vetGetSearchValue(resolvedSearchParams.startDate);
+  const selectedEndDate = vetGetSearchValue(resolvedSearchParams.endDate);
   const selectedBranchIdRaw = vetGetSearchValue(resolvedSearchParams.branchId);
   const selectedBranchId = selectedBranchIdRaw
     ? vetParsePositiveInt(selectedBranchIdRaw, 0) || null
@@ -179,7 +186,7 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
   const profileHref = "/vet/profile";
 
   const [{ data, error }, { data: dashboardSnapshot }] = await Promise.all([
-    fetchVetAppointments(selectedVetId, selectedDate, selectedBranchId),
+    fetchVetAppointments(selectedVetId, selectedStartDate, selectedEndDate, selectedBranchId),
     fetchVetDashboardSnapshot(selectedVetId),
   ]);
 
@@ -328,12 +335,21 @@ export default async function VetAppointmentsPage({ searchParams }: VetAppointme
                   </select>
                 </div>
                 <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Date</label>
+                  <label className={styles.formLabel}>Start date</label>
                   <input
                     type="date"
-                    name="date"
+                    name="startDate"
                     className={styles.inputControl}
-                    defaultValue={data.filters.date ?? ""}
+                    defaultValue={data.filters.start_date ?? ""}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>End date</label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    className={styles.inputControl}
+                    defaultValue={data.filters.end_date ?? ""}
                   />
                 </div>
                 <div className={styles.formGroup}>
