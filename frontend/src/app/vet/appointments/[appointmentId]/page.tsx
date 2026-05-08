@@ -10,6 +10,7 @@ import {
   type VetSearchValue,
 } from "../../vet_http";
 import AppointmentActions from "./appointment_actions";
+import InsertMicrochipAction from "./insert_microchip_action";
 
 type VetAppointmentDetailPet = {
   petid: number;
@@ -484,18 +485,23 @@ export default async function AppointmentDetailPage({
         </section>
 
         {!data.is_completed ? (
-          <AppointmentActions
-            key={`actions-${appointmentId}-${data.selected_pet_id ?? 0}-${data.latest_visit_summary?.visitid ?? "none"}-${data.is_completed ? "done" : "open"}`}
-            appointmentId={appointmentId}
-            vetId={selectedVetId}
-            selectedPetId={data.selected_pet_id}
-            defaultVisitNotes={latestVisitNotes}
-            defaultAppointmentDateTime={defaultAppointmentDateTime}
-            isCompleted={data.is_completed}
-            medicines={data.available_medicines}
-            existingVaccinationPlans={data.existing_vaccination_plans}
-            referralTargets={data.referral_targets}
-          />
+          <>
+            {data.selected_pet_id ? (
+              <InsertMicrochipAction appointmentId={appointmentId} vetId={selectedVetId} />
+            ) : null}
+            <AppointmentActions
+              key={`actions-${appointmentId}-${data.selected_pet_id ?? 0}-${data.latest_visit_summary?.visitid ?? "none"}-${data.is_completed ? "done" : "open"}`}
+              appointmentId={appointmentId}
+              vetId={selectedVetId}
+              selectedPetId={data.selected_pet_id}
+              defaultVisitNotes={latestVisitNotes}
+              defaultAppointmentDateTime={defaultAppointmentDateTime}
+              isCompleted={data.is_completed}
+              medicines={data.available_medicines}
+              existingVaccinationPlans={data.existing_vaccination_plans}
+              referralTargets={data.referral_targets}
+            />
+          </>
         ) : null}
 
         <section className={styles.card}>
@@ -509,4 +515,3 @@ export default async function AppointmentDetailPage({
     </main>
   );
 }
-
