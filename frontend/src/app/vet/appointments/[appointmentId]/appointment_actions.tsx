@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { TIME_SLOTS } from "@/lib/constants";
 import styles from "../../dashboard/vet_dashboard_page.module.css";
 import { vetBuildApiErrorMessage, vetBuildClientErrorMessage } from "../../vet_error_messages";
 
@@ -30,6 +31,10 @@ type ExistingVaccinationPlan = {
   last_shot_date: string | null;
   latest_vaccine_id: number | null;
   latest_vaccine_name: string | null;
+};
+
+type OccupiedSlot = {
+  datetime: string;
 };
 
 type AppointmentActionsProps = {
@@ -111,6 +116,73 @@ async function postVetAction<T>(
   return { data: null, error: lastError };
 }
 
+function toLocalDateInputValue(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateTimeForSlotInput(value: string): { date: string; slot: string } {
+  if (!value) {
+    return { date: "", slot: "" };
+  }
+  const [datePartRaw, timePartRaw = ""] = value.trim().split("T");
+  const datePart = /^\d{4}-\d{2}-\d{2}$/.test(datePartRaw) ? datePartRaw : "";
+  const slotPart = timePartRaw.slice(0, 5);
+  const slot = TIME_SLOTS.includes(slotPart) ? slotPart : "";
+  return { date: datePart, slot };
+}
+
+function buildDateTimeFromDateAndSlot(dateValue: string, slot: string): string {
+  if (!dateValue || !slot) {
+    return "";
+  }
+  return `${dateValue}T${slot}`;
+}
+
+function isPastSlot(dateValue: string, slot: string): boolean {
+  if (!dateValue || !slot) {
+    return false;
+  }
+  return new Date(`${dateValue}T${slot}:00`) < new Date();
+}
+
+function extractSlot(datetimeValue: string): string {
+  const match = datetimeValue.match(/[T\s](\d{2}:\d{2})/);
+  return match ? match[1] : "";
+}
+
+async function fetchOccupiedSlots(
+  vetId: number,
+  selectedDate: string
+): Promise<{ slots: string[]; error: string | null }> {
+  let lastError = "Could not load occupied slots.";
+
+  for (const apiBase of clientApiBaseCandidates) {
+    try {
+      const response = await fetch(
+        `${apiBase}/owner/appointments/occupied?vetId=${encodeURIComponent(String(vetId))}&date=${encodeURIComponent(selectedDate)}`,
+        { cache: "no-store" }
+      );
+      const responsePayload = (await response.json()) as OccupiedSlot[] & { error?: unknown };
+      if (!response.ok) {
+        lastError = vetBuildApiErrorMessage(responsePayload, response.status, "Could not load occupied slots.");
+        continue;
+      }
+
+      const slots = responsePayload
+        .map((row) => extractSlot(row.datetime))
+        .filter((slot) => TIME_SLOTS.includes(slot));
+      return { slots: Array.from(new Set(slots)), error: null };
+    } catch (error) {
+      lastError = vetBuildClientErrorMessage(error, "Could not load occupied slots.");
+    }
+  }
+
+  return { slots: [], error: lastError };
+}
+
 export default function AppointmentActions({
   appointmentId,
   vetId,
@@ -159,7 +231,18 @@ export default function AppointmentActions({
   const [completionMessage, setCompletionMessage] = useState<string | null>(null);
   const [completionError, setCompletionError] = useState<string | null>(null);
   const [completionSaving, setCompletionSaving] = useState(false);
-  const [appointmentDateTime, setAppointmentDateTime] = useState(defaultAppointmentDateTime);
+  const minSelectableDate = useMemo(() => toLocalDateInputValue(new Date()), []);
+  const defaultRescheduleSelection = useMemo(
+    () => parseDateTimeForSlotInput(defaultAppointmentDateTime),
+    [defaultAppointmentDateTime]
+  );
+  const [rescheduleDate, setRescheduleDate] = useState(
+    defaultRescheduleSelection.date || minSelectableDate
+  );
+  const [rescheduleSlot, setRescheduleSlot] = useState(defaultRescheduleSelection.slot);
+  const [rescheduleOccupiedSlots, setRescheduleOccupiedSlots] = useState<string[]>([]);
+  const [rescheduleSlotLoading, setRescheduleSlotLoading] = useState(true);
+  const [rescheduleSlotLoadError, setRescheduleSlotLoadError] = useState<string | null>(null);
   const [rescheduleMessage, setRescheduleMessage] = useState<string | null>(null);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
@@ -192,6 +275,30 @@ export default function AppointmentActions({
     () => `vet_appointment_draft:${vetId}:${appointmentId}`,
     [vetId, appointmentId]
   );
+  const rescheduleDateTime = useMemo(
+    () => buildDateTimeFromDateAndSlot(rescheduleDate, rescheduleSlot),
+    [rescheduleDate, rescheduleSlot]
+  );
+  const occupiedRescheduleSlotSet = useMemo(
+    () => new Set(rescheduleOccupiedSlots),
+    [rescheduleOccupiedSlots]
+  );
+  const hasAvailableRescheduleSlots = useMemo(
+    () =>
+      Boolean(rescheduleDate) &&
+      TIME_SLOTS.some(
+        (slot) =>
+          !isPastSlot(rescheduleDate, slot) &&
+          !occupiedRescheduleSlotSet.has(slot)
+      ),
+    [occupiedRescheduleSlotSet, rescheduleDate]
+  );
+  const minVaccinationNextDueDate = useMemo(() => {
+    if (!vaccinationShotDate) {
+      return minSelectableDate;
+    }
+    return vaccinationShotDate > minSelectableDate ? vaccinationShotDate : minSelectableDate;
+  }, [vaccinationShotDate, minSelectableDate]);
 
   const persistDraft = (overrides: Partial<AppointmentDraft> = {}) => {
     if (typeof window === "undefined") {
@@ -216,7 +323,7 @@ export default function AppointmentActions({
       treatmentCost,
       medicationCost,
       dueDate,
-      appointmentDateTime,
+      appointmentDateTime: rescheduleDateTime,
       ...overrides,
     };
     localStorage.setItem(draftStorageKey, JSON.stringify(snapshot));
@@ -301,7 +408,15 @@ export default function AppointmentActions({
         setDueDate(parsedDraft.dueDate);
       }
       if (typeof parsedDraft.appointmentDateTime === "string") {
-        setAppointmentDateTime(parsedDraft.appointmentDateTime);
+        const parsedDateTime = parseDateTimeForSlotInput(parsedDraft.appointmentDateTime);
+        if (parsedDateTime.date) {
+          setRescheduleDate(parsedDateTime.date);
+        }
+        if (parsedDateTime.slot) {
+          setRescheduleSlot(parsedDateTime.slot);
+        } else {
+          setRescheduleSlot("");
+        }
       }
 
       const targetVetIds = new Set(referralTargets.map((target) => target.veterinarianid));
@@ -315,6 +430,32 @@ export default function AppointmentActions({
       // Ignore malformed client drafts.
     }
   }, [draftStorageKey, selectedPetId, referralTargets]);
+
+  useEffect(() => {
+    if (!rescheduleDate) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetchOccupiedSlots(vetId, rescheduleDate)
+      .then(({ slots, error }) => {
+        if (cancelled) {
+          return;
+        }
+        setRescheduleOccupiedSlots(slots);
+        setRescheduleSlotLoadError(error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRescheduleSlotLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rescheduleDate, vetId]);
 
   useEffect(() => {
     if (vaccinationPlanMode !== "existing") {
@@ -473,6 +614,11 @@ export default function AppointmentActions({
       setVaccinationError("Batch no is required for vaccination.");
       return;
     }
+    const normalizedVaccinationShotDate = vaccinationShotDate.trim();
+    if (normalizedVaccinationShotDate && normalizedVaccinationShotDate < minSelectableDate) {
+      setVaccinationError("Shot date cannot be before today.");
+      return;
+    }
 
     const frequencyDaysResult =
       vaccinationPlanMode === "new"
@@ -495,7 +641,15 @@ export default function AppointmentActions({
     let normalizedNextDueDate = vaccinationPlanMode === "new" ? vaccinationNextDueDate.trim() : "";
     if (vaccinationPlanMode === "new" && !normalizedNextDueDate && frequencyDaysResult.value) {
       normalizedNextDueDate =
-        deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
+        deriveNextDueDate(normalizedVaccinationShotDate, frequencyDaysResult.value) ?? "";
+    }
+    if (normalizedNextDueDate && normalizedNextDueDate < minVaccinationNextDueDate) {
+      setVaccinationError(
+        vaccinationShotDate && vaccinationShotDate > minSelectableDate
+          ? "Next due date cannot be before shot date."
+          : "Next due date cannot be before today."
+      );
+      return;
     }
     const requiresNewPlanSchedule =
       vaccinationPlanMode === "new" &&
@@ -524,7 +678,7 @@ export default function AppointmentActions({
       vaccinationPlanMode,
       vaccinationPlanId: vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
       vaccinationBatchNo: normalizedVaccinationBatchNo,
-      vaccinationShotDate,
+      vaccinationShotDate: normalizedVaccinationShotDate,
       vaccinationNextDueDate: normalizedNextDueDate,
       vaccinationFrequencyDays: vaccinationPlanMode === "new" ? vaccinationFrequencyDays : "",
       vaccinationDoseCount: vaccinationPlanMode === "new" ? vaccinationDoseCount : "",
@@ -585,6 +739,11 @@ export default function AppointmentActions({
       setCompletionError("Vaccination batch no is required.");
       return;
     }
+    const normalizedVaccinationShotDate = vaccinationShotDate.trim();
+    if (normalizedVaccinationShotDate && normalizedVaccinationShotDate < minSelectableDate) {
+      setCompletionError("Shot date cannot be before today.");
+      return;
+    }
     const frequencyDaysResult =
       vaccinationPlanMode === "new"
         ? parseOptionalPositiveInteger(vaccinationFrequencyDays, "Frequency days")
@@ -607,7 +766,15 @@ export default function AppointmentActions({
       vaccinationPlanMode === "new" ? vaccinationNextDueDate.trim() : "";
     if (vaccinationPlanMode === "new" && !normalizedVaccinationNextDueDate && frequencyDaysResult.value) {
       normalizedVaccinationNextDueDate =
-        deriveNextDueDate(vaccinationShotDate, frequencyDaysResult.value) ?? "";
+        deriveNextDueDate(normalizedVaccinationShotDate, frequencyDaysResult.value) ?? "";
+    }
+    if (normalizedVaccinationNextDueDate && normalizedVaccinationNextDueDate < minVaccinationNextDueDate) {
+      setCompletionError(
+        vaccinationShotDate && vaccinationShotDate > minSelectableDate
+          ? "Next due date cannot be before shot date."
+          : "Next due date cannot be before today."
+      );
+      return;
     }
     const requiresNewPlanSchedule =
       vaccinationVaccineId &&
@@ -621,6 +788,30 @@ export default function AppointmentActions({
       );
       return;
     }
+    const normalizedDueDate = dueDate.trim();
+    if (normalizedDueDate && normalizedDueDate < minSelectableDate) {
+      setCompletionError("Due date cannot be before today.");
+      return;
+    }
+    const normalizedDateTime = buildDateTimeFromDateAndSlot(rescheduleDate, rescheduleSlot);
+    const requestedFollowUpDateTime =
+      normalizedDateTime && normalizedDateTime !== defaultAppointmentDateTime
+        ? normalizedDateTime
+        : null;
+    if (requestedFollowUpDateTime) {
+      if (!rescheduleDate || !rescheduleSlot) {
+        setCompletionError("Select date and time slot for follow-up appointment.");
+        return;
+      }
+      if (isPastSlot(rescheduleDate, rescheduleSlot)) {
+        setCompletionError("New appointment date/time cannot be before now.");
+        return;
+      }
+      if (occupiedRescheduleSlotSet.has(rescheduleSlot)) {
+        setCompletionError("Selected follow-up slot is already occupied.");
+        return;
+      }
+    }
 
     setCompletionError(null);
     setCompletionMessage(null);
@@ -630,11 +821,6 @@ export default function AppointmentActions({
       visitNotes.trim() ||
       defaultVisitNotes.trim() ||
       `Visit completed on ${new Date().toLocaleDateString("tr-TR")}.`;
-    const normalizedDateTime = appointmentDateTime.trim();
-    const requestedFollowUpDateTime =
-      normalizedDateTime && normalizedDateTime !== defaultAppointmentDateTime
-        ? normalizedDateTime
-        : null;
     persistDraft({
       selectedPetId,
       visitNotes: normalizedNotes,
@@ -644,7 +830,7 @@ export default function AppointmentActions({
       vaccinationPlanMode,
       vaccinationPlanId: vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
       vaccinationBatchNo: normalizedVaccinationBatchNo,
-      vaccinationShotDate,
+      vaccinationShotDate: normalizedVaccinationShotDate,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate,
       vaccinationFrequencyDays: vaccinationPlanMode === "new" ? vaccinationFrequencyDays : "",
       vaccinationDoseCount: vaccinationPlanMode === "new" ? vaccinationDoseCount : "",
@@ -653,7 +839,7 @@ export default function AppointmentActions({
       consultationFee,
       treatmentCost,
       medicationCost,
-      dueDate,
+      dueDate: normalizedDueDate,
       appointmentDateTime: normalizedDateTime,
     });
 
@@ -669,7 +855,7 @@ export default function AppointmentActions({
       vaccinationPlanId:
         vaccinationVaccineId && vaccinationPlanMode === "existing" ? vaccinationPlanId : null,
       vaccinationBatchNo: normalizedVaccinationBatchNo || null,
-      vaccinationShotDate: vaccinationShotDate || null,
+      vaccinationShotDate: normalizedVaccinationShotDate || null,
       vaccinationNextDueDate: normalizedVaccinationNextDueDate || null,
       vaccinationFrequencyDays: vaccinationPlanMode === "new" ? frequencyDaysResult.value : null,
       vaccinationDoseCount: vaccinationPlanMode === "new" ? doseCountResult.value : null,
@@ -678,7 +864,7 @@ export default function AppointmentActions({
       consultationFee: consultationFeeResult.value,
       treatmentCost: treatmentCostResult.value,
       medicationCost: medicationCostResult.value,
-      dueDate: dueDate || null,
+      dueDate: normalizedDueDate || null,
     });
 
     setCompletionSaving(false);
@@ -712,7 +898,24 @@ export default function AppointmentActions({
 
   const submitReschedule = async (event: FormEvent) => {
     event.preventDefault();
-    if (!appointmentDateTime.trim()) {
+    if (!rescheduleDate) {
+      setRescheduleError("New appointment date is required.");
+      return;
+    }
+    if (!rescheduleSlot) {
+      setRescheduleError("New appointment time slot is required.");
+      return;
+    }
+    if (isPastSlot(rescheduleDate, rescheduleSlot)) {
+      setRescheduleError("New appointment date/time cannot be before now.");
+      return;
+    }
+    if (occupiedRescheduleSlotSet.has(rescheduleSlot)) {
+      setRescheduleError("Selected time slot is already occupied.");
+      return;
+    }
+    const normalizedAppointmentDateTime = buildDateTimeFromDateAndSlot(rescheduleDate, rescheduleSlot);
+    if (!normalizedAppointmentDateTime) {
       setRescheduleError("New appointment date/time is required.");
       return;
     }
@@ -722,7 +925,7 @@ export default function AppointmentActions({
     setRescheduleSaving(true);
     persistDraft({
       selectedPetId,
-      appointmentDateTime: appointmentDateTime.trim(),
+      appointmentDateTime: normalizedAppointmentDateTime,
     });
     setRescheduleSaving(false);
     setRescheduleMessage("Reschedule draft saved. It will be committed on Complete visit.");
@@ -761,19 +964,64 @@ export default function AppointmentActions({
         <h2 className={styles.pageTitle}>Reschedule Appointment</h2>
         <form onSubmit={submitReschedule} className={`${styles.formRow} ${styles.mt1}`}>
           <div className={styles.formGroup}>
-            <label className={styles.formLabel}>New date/time</label>
+            <label className={styles.formLabel}>New date</label>
             <input
-              type="datetime-local"
+              type="date"
               className={styles.inputControl}
-              value={appointmentDateTime}
-              onChange={(event) => setAppointmentDateTime(event.target.value)}
+              value={rescheduleDate}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                setRescheduleSlotLoading(Boolean(nextDate));
+                setRescheduleSlotLoadError(null);
+                setRescheduleDate(nextDate);
+              }}
+              min={minSelectableDate}
               disabled={rescheduleSaving}
             />
           </div>
-          <button type="submit" className={styles.btn} disabled={rescheduleSaving}>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Time slot</label>
+            <select
+              className={styles.inputControl}
+              value={rescheduleSlot}
+              onChange={(event) => setRescheduleSlot(event.target.value)}
+              disabled={rescheduleSaving}
+            >
+              <option value="">
+                {rescheduleSlotLoading ? "Loading slots..." : "Select a slot"}
+              </option>
+              {TIME_SLOTS.map((slot) => {
+                const disabled =
+                  !rescheduleDate ||
+                  occupiedRescheduleSlotSet.has(slot) ||
+                  isPastSlot(rescheduleDate, slot);
+                return (
+                  <option key={slot} value={slot} disabled={disabled}>
+                    {slot}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+          <button
+            type="submit"
+            className={styles.btn}
+            disabled={
+              rescheduleSaving ||
+              rescheduleSlotLoading ||
+              !rescheduleDate ||
+              !rescheduleSlot ||
+              occupiedRescheduleSlotSet.has(rescheduleSlot) ||
+              isPastSlot(rescheduleDate, rescheduleSlot)
+            }
+          >
             {rescheduleSaving ? "Saving..." : "Save reschedule draft"}
           </button>
         </form>
+        {!hasAvailableRescheduleSlots && !rescheduleSlotLoading ? (
+          <p className={styles.errorText}>No available slot for the selected date.</p>
+        ) : null}
+        {rescheduleSlotLoadError ? <p className={styles.errorText}>{rescheduleSlotLoadError}</p> : null}
         {rescheduleMessage ? <p className={styles.tileSub}>{rescheduleMessage}</p> : null}
         {rescheduleError ? <p className={styles.errorText}>{rescheduleError}</p> : null}
       </section>
@@ -1008,6 +1256,7 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={vaccinationShotDate}
               onChange={(event) => setVaccinationShotDate(event.target.value)}
+              min={minSelectableDate}
               disabled={vaccinationSaving}
             />
           </div>
@@ -1031,6 +1280,7 @@ export default function AppointmentActions({
                   className={styles.inputControl}
                   value={vaccinationNextDueDate}
                   onChange={(event) => setVaccinationNextDueDate(event.target.value)}
+                  min={minVaccinationNextDueDate}
                   disabled={vaccinationSaving}
                 />
               </div>
@@ -1113,6 +1363,7 @@ export default function AppointmentActions({
               className={styles.inputControl}
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
+              min={minSelectableDate}
               disabled={completionSaving}
             />
           </div>
